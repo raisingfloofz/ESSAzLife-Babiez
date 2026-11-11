@@ -5,159 +5,494 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#ffffff">
+
 <title>ESSAzLife Babiez</title>
+
 <style>
-*{box-sizing:border-box}
-body{font-family:Arial,sans-serif;background:#fff;color:#111;margin:0;padding:20px}
-main{max-width:450px;margin:30px auto}
-header{font-size:20px;font-weight:bold;border-bottom:2px solid #111;padding-bottom:18px}
-h1{font-size:25px;margin-top:35px}
-p{line-height:1.6}
-button,input{width:100%;padding:15px;margin:8px 0;font-size:16px;border:1px solid #111;border-radius:6px}
-button{background:#111;color:#fff;cursor:pointer}
-button.secondary{background:#fff;color:#111}
-input{background:#fff;color:#111}
-#status{margin-top:20px;padding:15px;border:1px solid #ddd;border-radius:6px;white-space:pre-wrap}
-.hidden{display:none}
-small{color:#555}
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background: #fff;
+  color: #111;
+  margin: 0;
+  padding: 20px;
+}
+
+main {
+  max-width: 450px;
+  margin: 30px auto;
+}
+
+header {
+  font-size: 20px;
+  font-weight: bold;
+  border-bottom: 2px solid #111;
+  padding-bottom: 18px;
+}
+
+h1 {
+  font-size: 25px;
+  margin-top: 35px;
+}
+
+p {
+  line-height: 1.6;
+}
+
+button,
+input {
+  width: 100%;
+  padding: 15px;
+  margin: 8px 0;
+  font-size: 16px;
+  border: 1px solid #111;
+  border-radius: 6px;
+}
+
+button {
+  background: #111;
+  color: #fff;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #fff;
+  color: #111;
+}
+
+input {
+  background: #fff;
+  color: #111;
+}
+
+#status {
+  margin-top: 20px;
+  padding: 18px;
+  border: 2px solid #111;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  text-align: center;
+  font-weight: bold;
+  line-height: 1.5;
+}
+
+#status.success {
+  background: #111;
+  color: #fff;
+}
+
+.hidden {
+  display: none;
+}
+
+small {
+  color: #555;
+}
 </style>
 </head>
+
 <body>
+
 <main>
+
 <header>ESSAzLife Babiez</header>
 
 <section id="setup">
-<h1>Welcome to Babiez!</h1>
-<p>Let's register your caregiver NFC sticker.</p>
-<label for="name">Caregiver Name</label>
-<input id="name" placeholder="Enter your name" maxlength="60">
-<button id="register">Tap Caregiver NFC</button>
-<p><small>Hold your programmed NFC sticker against the back of your phone when prompted.</small></p>
+
+  <h1>Welcome to Babiez!</h1>
+
+  <p>Let's register your caregiver NFC sticker.</p>
+
+  <label for="name">Caregiver Name</label>
+
+  <input
+    id="name"
+    placeholder="Enter your name"
+    maxlength="60"
+  >
+
+  <button id="register">
+    Tap Caregiver NFC
+  </button>
+
+  <p>
+    <small>
+      Hold your programmed NFC sticker against
+      the back of your phone when prompted.
+    </small>
+  </p>
+
 </section>
 
 <section id="home" class="hidden">
-<h1 id="welcome"></h1>
-<p>Your caregiver NFC has been registered.</p>
-<button id="start">Scan Caregiver NFC</button>
-<button id="reset" class="secondary">Replace Caregiver NFC</button>
+
+  <h1 id="welcome"></h1>
+
+  <p>Your caregiver NFC has been registered.</p>
+
+  <button id="start">
+    Scan Caregiver NFC
+  </button>
+
+  <button id="reset" class="secondary">
+    Replace Caregiver NFC
+  </button>
+
 </section>
 
-<div id="status" role="status" aria-live="polite">Ready.</div>
+<div id="status" role="status" aria-live="polite">
+  Ready.
+</div>
+
 </main>
 
 <script>
-const KEY="essazlife-babiez-caregiver-v1";
-const $=id=>document.getElementById(id);
-let caregiver=null;
-let scanner=null;
 
-function status(message){
-  $("status").textContent=message;
+// =====================================
+// ESSAZLIFE BABIEZ
+// NFC CAREGIVER SYSTEM
+// =====================================
+
+// Browser storage key
+const KEY = "essazlife-babiez-caregiver-v1";
+
+// Shortcut for finding HTML elements
+const $ = id => document.getElementById(id);
+
+// Current caregiver and NFC scanner
+let caregiver = null;
+let scanner = null;
+
+// Audio system
+let audioContext = null;
+
+// =====================================
+// NFC CONFIRMATION SOUND
+// =====================================
+
+function prepareAudio() {
+  try {
+    if (!audioContext) {
+      const AudioClass =
+        window.AudioContext ||
+        window.webkitAudioContext;
+
+      if (!AudioClass) return;
+
+      audioContext = new AudioClass();
+    }
+
+    if (audioContext.state === "suspended") {
+      audioContext.resume().catch(() => {});
+    }
+  } catch (error) {
+    console.warn("Audio unavailable:", error);
+  }
 }
 
-function showHome(){
+function playScanSound() {
+  try {
+    prepareAudio();
+
+    if (!audioContext) return;
+
+    const now = audioContext.currentTime;
+
+    // Two cheerful rising tones
+    const tones = [660, 880];
+
+    tones.forEach((frequency, index) => {
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+
+      const start = now + index * 0.15;
+
+      oscillator.type = "sine";
+      oscillator.frequency.value = frequency;
+
+      // Smooth volume fade in and out
+      gain.gain.setValueAtTime(0.0001, start);
+
+      gain.gain.exponentialRampToValueAtTime(
+        0.2,
+        start + 0.02
+      );
+
+      gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        start + 0.13
+      );
+
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+
+      oscillator.start(start);
+      oscillator.stop(start + 0.14);
+    });
+
+  } catch (error) {
+    console.warn("Could not play scan sound:", error);
+  }
+}
+
+// =====================================
+// STATUS MESSAGES
+// =====================================
+
+function status(message, success = false) {
+  const statusBox = $("status");
+
+  statusBox.textContent = message;
+
+  statusBox.classList.toggle(
+    "success",
+    success
+  );
+}
+
+// =====================================
+// SCREEN NAVIGATION
+// =====================================
+
+function showHome() {
   $("setup").classList.add("hidden");
   $("home").classList.remove("hidden");
-  $("welcome").textContent="Welcome, "+caregiver.name+"!";
+
+  $("welcome").textContent =
+    "Welcome, " + caregiver.name + "!";
 }
 
-function showSetup(){
+function showSetup() {
   $("setup").classList.remove("hidden");
   $("home").classList.add("hidden");
 }
 
-try{
-  caregiver=JSON.parse(localStorage.getItem(KEY));
-  if(caregiver?.id && caregiver?.name) showHome();
-}catch(e){caregiver=null;}
+// =====================================
+// LOAD SAVED CAREGIVER
+// =====================================
 
-function supported(){
-  if(!("NDEFReader" in window)){
-    status("Web NFC is unavailable. Open this page in Chrome on an NFC-compatible Android phone.");
+try {
+  caregiver = JSON.parse(
+    localStorage.getItem(KEY)
+  );
+
+  if (caregiver?.id && caregiver?.name) {
+    showHome();
+  }
+
+} catch (error) {
+  caregiver = null;
+}
+
+// =====================================
+// CHECK NFC SUPPORT
+// =====================================
+
+function supported() {
+  if (!("NDEFReader" in window)) {
+    status(
+      "Web NFC is unavailable. Open Babiez in Chrome on an NFC-compatible Android phone."
+    );
+
     return false;
   }
+
   return true;
 }
 
-async function scan(mode){
-  if(!supported())return;
+// =====================================
+// NFC SCANNER
+// =====================================
 
-  if(mode==="register" && !$("name").value.trim()){
+async function scan(mode) {
+
+  if (!supported()) return;
+
+  // Require caregiver name for registration
+  if (
+    mode === "register" &&
+    !$("name").value.trim()
+  ) {
     status("Please enter your caregiver name first.");
     return;
   }
 
-  if(scanner){
+  // Prevent duplicate scanning sessions
+  if (scanner) {
     status("A scan is already in progress.");
     return;
   }
 
-  const reader=new NDEFReader();
-  scanner=reader;
+  // Prepare audio while responding
+  // to the user's button press
+  prepareAudio();
 
-  try{
-    reader.onreading=event=>{
-      if(scanner!==reader)return;
+  const reader = new NDEFReader();
 
-      let id=null;
+  scanner = reader;
 
-      for(const record of event.message.records){
-        if(record.recordType!=="text")continue;
-        try{
-          const text=new TextDecoder(record.encoding||"utf-8")
-            .decode(record.data).trim();
-          if(text.startsWith("ESSAZ-CAREGIVER-")){
-            id=text;
+  try {
+
+    reader.onreading = event => {
+
+      if (scanner !== reader) return;
+
+      let id = null;
+
+      // Read text stored on NFC sticker
+      for (const record of event.message.records) {
+
+        if (record.recordType !== "text") {
+          continue;
+        }
+
+        try {
+
+          const text = new TextDecoder(
+            record.encoding || "utf-8"
+          ).decode(record.data).trim();
+
+          if (
+            text.startsWith("ESSAZ-CAREGIVER-")
+          ) {
+            id = text;
             break;
           }
-        }catch(e){}
+
+        } catch (error) {
+          console.warn(
+            "Could not decode NFC record:",
+            error
+          );
+        }
       }
 
-      if(!id){
-        status("This tag does not contain an ESSAzLife caregiver ID.");
+      // Reject unrelated NFC stickers
+      if (!id) {
+        status(
+          "This sticker does not contain an ESSAzLife caregiver ID. Try again."
+        );
         return;
       }
 
-      if(mode==="register"){
-        caregiver={name:$("name").value.trim(),id};
-        localStorage.setItem(KEY,JSON.stringify(caregiver));
+      // REGISTER A NEW CAREGIVER
+      if (mode === "register") {
+
+        caregiver = {
+          name: $("name").value.trim(),
+          id: id
+        };
+
+        localStorage.setItem(
+          KEY,
+          JSON.stringify(caregiver)
+        );
+
         showHome();
-        status("Caregiver registered successfully!");
-      }else if(caregiver && id===caregiver.id){
-        status("NFC verified! Welcome back, "+caregiver.name+"!");
-      }else{
-        status("This is not the registered caregiver sticker.");
+
+        playScanSound();
+
+        status(
+          "✓ SCAN SUCCESSFUL!\nCaregiver registered!",
+          true
+        );
+
+      }
+
+      // VERIFY EXISTING CAREGIVER
+      else if (
+        caregiver &&
+        id === caregiver.id
+      ) {
+
+        playScanSound();
+
+        status(
+          "✓ SCAN SUCCESSFUL!\nWelcome back, " +
+          caregiver.name + "!",
+          true
+        );
+
+      }
+
+      // WRONG CAREGIVER TAG
+      else {
+
+        status(
+          "This is not the registered caregiver sticker. Try again."
+        );
+
         return;
       }
 
-      reader.onreading=null;
-      reader.onreadingerror=null;
-      scanner=null;
+      // Stop handling scans after success
+      reader.onreading = null;
+      reader.onreadingerror = null;
+
+      scanner = null;
     };
 
-    reader.onreadingerror=()=>{
-      status("Unable to read the tag. Try holding it closer.");
+    reader.onreadingerror = () => {
+      status(
+        "Unable to read the NFC sticker. Try holding it closer to your phone."
+      );
     };
 
-    status("Ready to scan. Hold your NFC sticker against your phone.");
+    status(
+      "READY TO SCAN\n\nHold your NFC sticker against the back of your phone."
+    );
+
     await reader.scan();
-  }catch(error){
-    scanner=null;
-    status("NFC scan couldn't start: "+error.message);
+
+  } catch (error) {
+
+    scanner = null;
+
+    status(
+      "NFC scan couldn't start:\n" +
+      error.message
+    );
   }
 }
 
-$("register").onclick=()=>scan("register");
-$("start").onclick=()=>scan("verify");
+// =====================================
+// BUTTON ACTIONS
+// =====================================
 
-$("reset").onclick=()=>{
-  if(confirm("Replace the registered caregiver NFC sticker?")){
-    localStorage.removeItem(KEY);
-    caregiver=null;
-    showSetup();
-    status("Ready to register a caregiver sticker.");
-  }
+// Register caregiver
+$("register").onclick = () => {
+  scan("register");
 };
+
+// Verify caregiver
+$("start").onclick = () => {
+  scan("verify");
+};
+
+// Replace caregiver sticker
+$("reset").onclick = () => {
+
+  const confirmed = confirm(
+    "Replace the registered caregiver NFC sticker?"
+  );
+
+  if (!confirmed) return;
+
+  localStorage.removeItem(KEY);
+
+  caregiver = null;
+
+  showSetup();
+
+  status(
+    "Ready to register a caregiver sticker."
+  );
+};
+
 </script>
+
 </body>
 </html>
