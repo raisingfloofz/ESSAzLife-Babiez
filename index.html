@@ -1,498 +1,243 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#ffffff">
-
 <title>ESSAzLife Babiez</title>
-
 <style>
-* {
-  box-sizing: border-box;
-}
-
-body {
-  font-family: Arial, sans-serif;
-  background: #fff;
-  color: #111;
-  margin: 0;
-  padding: 20px;
-}
-
-main {
-  max-width: 450px;
-  margin: 30px auto;
-}
-
-header {
-  font-size: 20px;
-  font-weight: bold;
-  border-bottom: 2px solid #111;
-  padding-bottom: 18px;
-}
-
-h1 {
-  font-size: 25px;
-  margin-top: 35px;
-}
-
-p {
-  line-height: 1.6;
-}
-
-button,
-input {
-  width: 100%;
-  padding: 15px;
-  margin: 8px 0;
-  font-size: 16px;
-  border: 1px solid #111;
-  border-radius: 6px;
-}
-
-button {
-  background: #111;
-  color: #fff;
-  cursor: pointer;
-}
-
-button.secondary {
-  background: #fff;
-  color: #111;
-}
-
-input {
-  background: #fff;
-  color: #111;
-}
-
-#status {
-  margin-top: 20px;
-  padding: 18px;
-  border: 2px solid #111;
-  border-radius: 6px;
-  white-space: pre-wrap;
-  text-align: center;
-  font-weight: bold;
-  line-height: 1.5;
-}
-
-#status.success {
-  background: #111;
-  color: #fff;
-}
-
-.hidden {
-  display: none;
-}
-
-small {
-  color: #555;
-}
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;background:#fff;color:#111;margin:0;padding:20px}
+main{max-width:480px;margin:24px auto}
+header{font-size:21px;font-weight:700;border-bottom:2px solid #111;padding-bottom:17px}
+h1{font-size:25px;margin:28px 0 10px}h2{font-size:19px;margin:22px 0 10px}
+p{line-height:1.5}small,.muted{color:#555}
+button,input{font:inherit;width:100%;padding:13px;margin:7px 0;border:1px solid #111;border-radius:6px}
+button{background:#111;color:#fff;cursor:pointer}button.secondary{background:#fff;color:#111}
+button:disabled{opacity:.5;cursor:not-allowed}input{background:#fff;color:#111}
+.card{border:1px solid #bbb;border-radius:8px;padding:14px;margin:12px 0}
+.card strong{display:block;overflow-wrap:anywhere}.card small{display:block;margin-top:5px;overflow-wrap:anywhere}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.actions button{margin:0;font-size:14px;padding:11px 5px}
+#status{margin-top:20px;padding:17px;border:2px solid #111;border-radius:6px;text-align:center;font-weight:700;white-space:pre-wrap;line-height:1.5;overflow-wrap:anywhere}
+#status.success{background:#111;color:#fff}.hidden{display:none!important}
+.notice{border-left:3px solid #111;padding:9px 12px;background:#f6f6f6}
 </style>
 </head>
-
 <body>
-
 <main>
-
 <header>ESSAzLife Babiez</header>
-
-<section id="setup">
-
-  <h1>Welcome to Babiez!</h1>
-
-  <p>Let's register your caregiver NFC sticker.</p>
-
-  <label for="name">Caregiver Name</label>
-
-  <input
-    id="name"
-    placeholder="Enter your name"
-    maxlength="60"
-  >
-
-  <button id="register">
-    Tap Caregiver NFC
-  </button>
-
-  <p>
-    <small>
-      Hold your programmed NFC sticker against
-      the back of your phone when prompted.
-    </small>
-  </p>
-
+<h1>Caregivers</h1>
+<p>Register a caregiver NFC sticker, or scan one to identify who's caring for baby.</p>
+<button id="identify">Scan Caregiver NFC</button>
+<section id="list"><h2>Registered Caregivers</h2><div id="caregivers"></div></section>
+<section id="editor" class="hidden">
+<h2 id="editorTitle">Add Caregiver</h2>
+<label for="name">Caregiver Name</label>
+<input id="name" maxlength="60" placeholder="Enter caregiver name" autocomplete="off">
+<p id="editorHint" class="muted"></p>
+<button id="saveTag">Scan NFC Sticker</button>
+<button id="cancel" class="secondary">Cancel</button>
 </section>
-
-<section id="home" class="hidden">
-
-  <h1 id="welcome"></h1>
-
-  <p>Your caregiver NFC has been registered.</p>
-
-  <button id="start">
-    Scan Caregiver NFC
-  </button>
-
-  <button id="reset" class="secondary">
-    Replace Caregiver NFC
-  </button>
-
-</section>
-
-<div id="status" role="status" aria-live="polite">
-  Ready.
-</div>
-
+<button id="add" class="secondary">+ Add Caregiver</button>
+<p class="notice"><small>All caregiver data stays in this browser on this device. Removing a caregiver does not erase their past care entries. Replacing a tag preserves their profile.</small></p>
+<div id="status" role="status" aria-live="polite">Ready.</div>
 </main>
-
 <script>
+// Storage keys. Keep the old key so existing registrations can migrate.
+const OLD_KEY="essazlife-babiez-caregiver-v1";
+const KEY="essazlife-babiez-caregivers-v2";
+const HISTORY_KEY="essazlife-babiez-care-history-v1";
+const $=id=>document.getElementById(id);
+let caregivers=[];
+let history=[];
+let mode=null;
+let targetId=null;
+let scanner=null;
+let scanController=null;
+let audioContext=null;
 
-// =====================================
-// ESSAZLIFE BABIEZ
-// NFC CAREGIVER SYSTEM
-// =====================================
-
-// Browser storage key
-const KEY = "essazlife-babiez-caregiver-v1";
-
-// Shortcut for finding HTML elements
-const $ = id => document.getElementById(id);
-
-// Current caregiver and NFC scanner
-let caregiver = null;
-let scanner = null;
-
-// Audio system
-let audioContext = null;
-
-// =====================================
-// NFC CONFIRMATION SOUND
-// =====================================
-
-function prepareAudio() {
-  try {
-    if (!audioContext) {
-      const AudioClass =
-        window.AudioContext ||
-        window.webkitAudioContext;
-
-      if (!AudioClass) return;
-
-      audioContext = new AudioClass();
-    }
-
-    if (audioContext.state === "suspended") {
-      audioContext.resume().catch(() => {});
-    }
-  } catch (error) {
-    console.warn("Audio unavailable:", error);
-  }
+function newId(){
+  return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
+    "person-"+Date.now()+"-"+Math.random().toString(36).slice(2);
 }
-
-function playScanSound() {
-  try {
+function readArray(key){
+  try{const value=JSON.parse(localStorage.getItem(key));return Array.isArray(value)?value:[];}
+  catch{return [];}
+}
+function save(){
+  localStorage.setItem(KEY,JSON.stringify(caregivers));
+  localStorage.setItem(HISTORY_KEY,JSON.stringify(history));
+}
+function initialize(){
+  caregivers=readArray(KEY);
+  history=readArray(HISTORY_KEY);
+  // One-time migration from the original single-caregiver prototype.
+  if(!localStorage.getItem(KEY)){
+    try{
+      const old=JSON.parse(localStorage.getItem(OLD_KEY));
+      if(old && typeof old.name==="string" && typeof old.id==="string" && old.id.startsWith("ESSAZ-CAREGIVER-")){
+        caregivers.push({profileId:newId(),name:old.name,tagId:old.id});
+      }
+    }catch{}
+    save();
+  }
+  render();
+}
+function status(message,success=false){
+  $("status").textContent=message;
+  $("status").classList.toggle("success",success);
+}
+function prepareAudio(){
+  try{
+    const AudioClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioClass)return;
+    if(!audioContext)audioContext=new AudioClass();
+    if(audioContext.state==="suspended")audioContext.resume().catch(()=>{});
+  }catch(e){console.warn("Audio unavailable",e);}
+}
+function playScanSound(){
+  try{
     prepareAudio();
-
-    if (!audioContext) return;
-
-    const now = audioContext.currentTime;
-
-    // Two cheerful rising tones
-    const tones = [660, 880];
-
-    tones.forEach((frequency, index) => {
-      const oscillator = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-
-      const start = now + index * 0.15;
-
-      oscillator.type = "sine";
-      oscillator.frequency.value = frequency;
-
-      // Smooth volume fade in and out
-      gain.gain.setValueAtTime(0.0001, start);
-
-      gain.gain.exponentialRampToValueAtTime(
-        0.2,
-        start + 0.02
-      );
-
-      gain.gain.exponentialRampToValueAtTime(
-        0.0001,
-        start + 0.13
-      );
-
+    if(!audioContext||audioContext.state!=="running")return;
+    const now=audioContext.currentTime;
+    [660,880].forEach((frequency,index)=>{
+      const oscillator=audioContext.createOscillator();
+      const gain=audioContext.createGain();
+      const start=now+index*0.15;
+      oscillator.type="sine";
+      oscillator.frequency.value=frequency;
+      gain.gain.setValueAtTime(0.0001,start);
+      gain.gain.exponentialRampToValueAtTime(0.2,start+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001,start+0.13);
       oscillator.connect(gain);
       gain.connect(audioContext.destination);
-
       oscillator.start(start);
-      oscillator.stop(start + 0.14);
+      oscillator.stop(start+0.14);
     });
-
-  } catch (error) {
-    console.warn("Could not play scan sound:", error);
+  }catch(e){console.warn("Scan sound unavailable",e);}
+}
+function render(){
+  const container=$("caregivers");
+  container.replaceChildren();
+  if(!caregivers.length){
+    const p=document.createElement("p");p.className="muted";
+    p.textContent="No caregivers registered yet.";
+    container.append(p);
+  }
+  for(const person of caregivers){
+    const card=document.createElement("div");card.className="card";
+    const name=document.createElement("strong");name.textContent=person.name;
+    const id=document.createElement("small");id.textContent="NFC: "+person.tagId;
+    const actions=document.createElement("div");actions.className="actions";
+    const replace=document.createElement("button");replace.className="secondary";
+    replace.textContent="Replace NFC";
+    replace.onclick=()=>openEditor("replace",person.profileId);
+    const remove=document.createElement("button");remove.className="secondary";
+    remove.textContent="Remove";
+    remove.onclick=()=>removeCaregiver(person.profileId);
+    actions.append(replace,remove);
+    card.append(name,id,actions);
+    container.append(card);
   }
 }
-
-// =====================================
-// STATUS MESSAGES
-// =====================================
-
-function status(message, success = false) {
-  const statusBox = $("status");
-
-  statusBox.textContent = message;
-
-  statusBox.classList.toggle(
-    "success",
-    success
-  );
+function openEditor(nextMode,id=null){
+  stopScan();
+  mode=nextMode;targetId=id;
+  const person=caregivers.find(p=>p.profileId===id);
+  $("editorTitle").textContent=nextMode==="replace"?"Replace NFC Sticker":"Add Caregiver";
+  $("name").value=person?.name||"";
+  $("name").disabled=nextMode==="replace";
+  $("editorHint").textContent=nextMode==="replace"
+    ?"Scan a new, uniquely programmed caregiver sticker. The caregiver's name and history will stay intact."
+    :"Enter a name, then scan that person's uniquely programmed NFC sticker.";
+  $("editor").classList.remove("hidden");
+  $("add").classList.add("hidden");
+  status("Ready to "+(nextMode==="replace"?"replace the NFC sticker.":"register a caregiver."));
 }
-
-// =====================================
-// SCREEN NAVIGATION
-// =====================================
-
-function showHome() {
-  $("setup").classList.add("hidden");
-  $("home").classList.remove("hidden");
-
-  $("welcome").textContent =
-    "Welcome, " + caregiver.name + "!";
+function closeEditor(){
+  stopScan();mode=null;targetId=null;
+  $("editor").classList.add("hidden");
+  $("add").classList.remove("hidden");
+  $("name").disabled=false;
 }
-
-function showSetup() {
-  $("setup").classList.remove("hidden");
-  $("home").classList.add("hidden");
+function removeCaregiver(id){
+  const person=caregivers.find(p=>p.profileId===id);
+  if(!person)return;
+  if(!confirm("Remove "+person.name+" from active caregivers? Their existing care history will be kept."))return;
+  stopScan();
+  caregivers=caregivers.filter(p=>p.profileId!==id);
+  save();render();closeEditor();
+  status(person.name+" was removed. Existing care history is preserved.",true);
 }
-
-// =====================================
-// LOAD SAVED CAREGIVER
-// =====================================
-
-try {
-  caregiver = JSON.parse(
-    localStorage.getItem(KEY)
-  );
-
-  if (caregiver?.id && caregiver?.name) {
-    showHome();
+function stopScan(){
+  if(scanController){scanController.abort();scanController=null;}
+  if(scanner){scanner.onreading=null;scanner.onreadingerror=null;scanner=null;}
+}
+function parseTag(event){
+  for(const record of event.message.records){
+    if(record.recordType!=="text")continue;
+    try{
+      const value=new TextDecoder(record.encoding||"utf-8").decode(record.data).trim();
+      if(/^ESSAZ-CAREGIVER-[A-Za-z0-9-]+$/.test(value))return value;
+    }catch(e){console.warn("Could not decode NFC text",e);}
   }
-
-} catch (error) {
-  caregiver = null;
+  return null;
 }
-
-// =====================================
-// CHECK NFC SUPPORT
-// =====================================
-
-function supported() {
-  if (!("NDEFReader" in window)) {
-    status(
-      "Web NFC is unavailable. Open Babiez in Chrome on an NFC-compatible Android phone."
-    );
-
-    return false;
+async function scan(requestedMode){
+  if(!("NDEFReader" in window)){
+    status("Web NFC is unavailable. Use Chrome on an NFC-compatible Android phone.");return;
   }
-
-  return true;
-}
-
-// =====================================
-// NFC SCANNER
-// =====================================
-
-async function scan(mode) {
-
-  if (!supported()) return;
-
-  // Require caregiver name for registration
-  if (
-    mode === "register" &&
-    !$("name").value.trim()
-  ) {
-    status("Please enter your caregiver name first.");
-    return;
+  if(scanner){status("A scan is already in progress. Hold your sticker against the phone.");return;}
+  if(requestedMode==="add" && !$("name").value.trim()){
+    status("Enter the caregiver's name first.");return;
   }
-
-  // Prevent duplicate scanning sessions
-  if (scanner) {
-    status("A scan is already in progress.");
-    return;
-  }
-
-  // Prepare audio while responding
-  // to the user's button press
+  const name=$("name").value.trim();
+  const selectedProfile=targetId;
   prepareAudio();
-
-  const reader = new NDEFReader();
-
-  scanner = reader;
-
-  try {
-
-    reader.onreading = event => {
-
-      if (scanner !== reader) return;
-
-      let id = null;
-
-      // Read text stored on NFC sticker
-      for (const record of event.message.records) {
-
-        if (record.recordType !== "text") {
-          continue;
-        }
-
-        try {
-
-          const text = new TextDecoder(
-            record.encoding || "utf-8"
-          ).decode(record.data).trim();
-
-          if (
-            text.startsWith("ESSAZ-CAREGIVER-")
-          ) {
-            id = text;
-            break;
-          }
-
-        } catch (error) {
-          console.warn(
-            "Could not decode NFC record:",
-            error
-          );
-        }
-      }
-
-      // Reject unrelated NFC stickers
-      if (!id) {
-        status(
-          "This sticker does not contain an ESSAzLife caregiver ID. Try again."
-        );
-        return;
-      }
-
-      // REGISTER A NEW CAREGIVER
-      if (mode === "register") {
-
-        caregiver = {
-          name: $("name").value.trim(),
-          id: id
-        };
-
-        localStorage.setItem(
-          KEY,
-          JSON.stringify(caregiver)
-        );
-
-        showHome();
-
-        playScanSound();
-
-        status(
-          "✓ SCAN SUCCESSFUL!\nCaregiver registered!",
-          true
-        );
-
-      }
-
-      // VERIFY EXISTING CAREGIVER
-      else if (
-        caregiver &&
-        id === caregiver.id
-      ) {
-
-        playScanSound();
-
-        status(
-          "✓ SCAN SUCCESSFUL!\nWelcome back, " +
-          caregiver.name + "!",
-          true
-        );
-
-      }
-
-      // WRONG CAREGIVER TAG
-      else {
-
-        status(
-          "This is not the registered caregiver sticker. Try again."
-        );
-
-        return;
-      }
-
-      // Stop handling scans after success
-      reader.onreading = null;
-      reader.onreadingerror = null;
-
-      scanner = null;
-    };
-
-    reader.onreadingerror = () => {
-      status(
-        "Unable to read the NFC sticker. Try holding it closer to your phone."
-      );
-    };
-
-    status(
-      "READY TO SCAN\n\nHold your NFC sticker against the back of your phone."
-    );
-
-    await reader.scan();
-
-  } catch (error) {
-
-    scanner = null;
-
-    status(
-      "NFC scan couldn't start:\n" +
-      error.message
-    );
+  const reader=new NDEFReader();
+  const controller=new AbortController();
+  scanner=reader;scanController=controller;
+  reader.onreading=event=>{
+    if(scanner!==reader)return;
+    const tagId=parseTag(event);
+    if(!tagId){status("This tag doesn't contain a valid ESSAzLife caregiver ID. Try again.");return;}
+    const duplicate=caregivers.find(p=>p.tagId===tagId);
+    if(requestedMode==="identify"){
+      if(!duplicate){status("This caregiver NFC isn't registered. Use Add Caregiver first.");return;}
+      stopScan();playScanSound();
+      status("✓ SCAN SUCCESSFUL!\nHello, "+duplicate.name+"!",true);
+      return;
+    }
+    if(duplicate && (requestedMode==="add" || duplicate.profileId!==selectedProfile)){
+      status("This NFC sticker is already registered to "+duplicate.name+". Use a different sticker.");return;
+    }
+    if(requestedMode==="add"){
+      caregivers.push({profileId:newId(),name,tagId});
+      save();render();closeEditor();playScanSound();
+      status("✓ SCAN SUCCESSFUL!\n"+name+" is registered!",true);
+      return;
+    }
+    if(requestedMode==="replace"){
+      const person=caregivers.find(p=>p.profileId===selectedProfile);
+      if(!person){stopScan();status("Caregiver not found. Try again.");return;}
+      person.tagId=tagId;
+      save();render();closeEditor();playScanSound();
+      status("✓ SCAN SUCCESSFUL!\n"+person.name+"'s NFC sticker was replaced. Their history is preserved!",true);
+    }
+  };
+  reader.onreadingerror=()=>status("Couldn't read the sticker. Hold it closer and try again.");
+  status("READY TO SCAN\n\nHold your caregiver NFC sticker against the back of your phone.");
+  try{await reader.scan({signal:controller.signal});}
+  catch(error){
+    if(scanner===reader)stopScan();
+    if(error.name!=="AbortError")status("NFC couldn't start: "+error.message);
   }
 }
-
-// =====================================
-// BUTTON ACTIONS
-// =====================================
-
-// Register caregiver
-$("register").onclick = () => {
-  scan("register");
-};
-
-// Verify caregiver
-$("start").onclick = () => {
-  scan("verify");
-};
-
-// Replace caregiver sticker
-$("reset").onclick = () => {
-
-  const confirmed = confirm(
-    "Replace the registered caregiver NFC sticker?"
-  );
-
-  if (!confirmed) return;
-
-  localStorage.removeItem(KEY);
-
-  caregiver = null;
-
-  showSetup();
-
-  status(
-    "Ready to register a caregiver sticker."
-  );
-};
-
+$("identify").onclick=()=>scan("identify");
+$("add").onclick=()=>openEditor("add");
+$("saveTag").onclick=()=>scan(mode);
+$("cancel").onclick=()=>{closeEditor();status("Ready.");};
+initialize();
 </script>
-
 </body>
 </html>
