@@ -1,498 +1,80 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#ffffff">
-<title>ESSAzLife Babiez</title>
-<style>
-*{box-sizing:border-box}
-body{font-family:Arial,sans-serif;background:#fff;color:#111;margin:0;padding:20px}
-main{max-width:480px;margin:24px auto}
-header{font-size:21px;font-weight:700;border-bottom:2px solid #111;padding-bottom:17px}
-h1{font-size:25px;margin:28px 0 10px}h2{font-size:19px;margin:22px 0 10px}
-p{line-height:1.5}small,.muted{color:#555}
-button,input,select{font:inherit;width:100%;padding:13px;margin:7px 0;border:1px solid #111;border-radius:6px}
-button{background:#111;color:#fff;cursor:pointer}button.secondary{background:#fff;color:#111}
-select{background:#fff;color:#111}label{display:block;margin-top:10px;font-weight:600}button:disabled{opacity:.5;cursor:not-allowed}input{background:#fff;color:#111}
-.card{border:1px solid #bbb;border-radius:8px;padding:14px;margin:12px 0}
-.card strong{display:block;overflow-wrap:anywhere}.card small{display:block;margin-top:5px;overflow-wrap:anywhere}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.actions button{margin:0;font-size:14px;padding:11px 5px}
-#status{margin-top:20px;padding:17px;border:2px solid #111;border-radius:6px;text-align:center;font-weight:700;white-space:pre-wrap;line-height:1.5;overflow-wrap:anywhere}
-#status.success{background:#111;color:#fff}.hidden{display:none!important}
-.notice{border-left:3px solid #111;padding:9px 12px;background:#f6f6f6}
-.session-panel{border:2px solid #111;border-radius:9px;padding:15px;margin:18px 0}.session-panel h2{margin-top:0}.session-live{font-size:23px;font-weight:bold}.session-event{font-weight:bold;padding:12px;border:1px solid #111;border-radius:6px;margin-top:10px}.session-event[aria-live]{min-height:50px}.role-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center}.role-row select{margin:3px 0}.session-log{max-height:180px;overflow:auto;padding-left:22px}.session-log li{margin:6px 0}.session-note{font-size:13px;color:#555}
-</style>
-</head>
-<body>
-<main>
-<header>ESSAzLife Babiez</header>
-<h1>Babiez</h1>
-<p>Create a baby profile, then select your baby by name or scan their NFC sticker.</p>
-<button id="chooseBaby">Scan Baby NFC</button>
-<section><h2>Registered Babiez</h2><div id="babies"></div></section>
-<section id="babyEditor" class="hidden">
-<h2 id="babyEditorTitle">Add Baby</h2>
-<label for="babyName">Baby Name</label><input id="babyName" maxlength="60" placeholder="Enter baby's name">
-<label for="ageMode">How should Babiez track age?</label>
-<select id="ageMode"><option value="birth">Calculate from birth date</option><option value="manual">Use a simulated age</option></select>
-<div id="birthFields"><label for="birthDate">Birth Date</label><input id="birthDate" type="date"></div>
-<div id="manualFields" class="hidden"><label for="manualMonths">Simulated Age (months, 0–24)</label><input id="manualMonths" type="number" min="0" max="24" value="0"></div>
-<p class="muted">NFC is optional. You can add or replace the baby's sticker later.</p>
-<button id="saveBaby">Save Baby Profile</button><button id="cancelBaby" class="secondary">Cancel</button>
-</section>
-<button id="addBaby" class="secondary">+ Add Baby</button>
-<p id="activeBaby" class="notice">No baby selected yet.</p>
-<section class="session-panel" id="sessionPanel">
-<h2>Simulation — Caregiver Scan & Go</h2>
-<p class="session-note">This is the caregiver-switching prototype. Baby needs, sounds and scoring will be added later.</p>
-<div id="sessionSetup">
-<p>Select a baby above, then assign caregiver roles. Anyone already registered can scan in during the session, even if they were not selected at the start.</p>
-<div id="sessionRoles"></div>
-<button id="beginSession">Start Simulation & Listen for NFC</button>
-</div>
-<div id="sessionActive" class="hidden">
-<p class="session-live" id="sessionBabyName"></p>
-<p>Currently caring for baby: <strong id="currentCaregiver">No caregiver scanned yet</strong></p>
-<div class="session-event" id="sessionAnnouncement" role="status" aria-live="polite">NFC listener starting…</div>
-<p class="session-note" id="listenerState">Keep this page open in Chrome while scanning caregiver tags.</p>
-<button id="restartListener" class="secondary">Restart NFC Listener</button>
-<button id="endSession" class="secondary">End Test Session</button>
-<h2>Caregiver Activity</h2>
-<ol class="session-log" id="sessionLog"></ol>
-</div>
-</section>
-<hr>
-<h1>Caregivers</h1>
-<p>Register a caregiver NFC sticker, or scan one to identify who's caring for baby.</p>
-<button id="identify">Scan Caregiver NFC</button>
-<section id="list"><h2>Registered Caregivers</h2><div id="caregivers"></div></section>
-<section id="editor" class="hidden">
-<h2 id="editorTitle">Add Caregiver</h2>
-<label for="name">Caregiver Name</label>
-<input id="name" maxlength="60" placeholder="Enter caregiver name" autocomplete="off">
-<p id="editorHint" class="muted"></p>
-<button id="saveTag">Scan NFC Sticker</button>
-<button id="cancel" class="secondary">Cancel</button>
-</section>
-<button id="add" class="secondary">+ Add Caregiver</button>
-<p class="notice"><small>All caregiver data stays in this browser on this device. Removing a caregiver does not erase their past care entries. Replacing a tag preserves their profile.</small></p>
-<div id="status" role="status" aria-live="polite">Ready.</div>
-</main>
-<script>
-// Storage keys. Keep the old key so existing registrations can migrate.
-const OLD_KEY="essazlife-babiez-caregiver-v1";
-const KEY="essazlife-babiez-caregivers-v2";
-const HISTORY_KEY="essazlife-babiez-care-history-v1";
-const BABIES_KEY="essazlife-babiez-babies-v1";
-const ACTIVE_BABY_KEY="essazlife-babiez-active-baby-v1";
-const SESSION_KEY="essazlife-babiez-session-v1";
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111111"><title>ESSAzLife Babiez</title><style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#161616;background:#f5f5f5}*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer}button:disabled{opacity:.4;cursor:not-allowed}#app{min-height:100dvh;display:flex;justify-content:center}.shell{width:min(100%,520px);min-height:100dvh;background:#fff;display:flex;flex-direction:column;box-shadow:0 0 25px #0001}.top{padding:18px 20px 10px;border-bottom:2px solid #111;display:flex;align-items:center;justify-content:space-between;gap:10px}.brand{font-weight:900;letter-spacing:.03em;font-size:1.05rem}.tiny{font-size:.75rem;color:#666}.content{padding:22px 20px;flex:1;display:flex;flex-direction:column;gap:16px;overflow:auto}.content h1{font-size:clamp(1.45rem,5vw,2rem);line-height:1.15;margin:0}.content h2{font-size:1.2rem;margin:0}.content p{margin:0;line-height:1.45}.muted{color:#626262}.footer{position:sticky;bottom:0;background:white;border-top:1px solid #ddd;padding:12px 18px calc(12px + env(safe-area-inset-bottom));display:flex;gap:10px}.btn{border:2px solid #111;background:#111;color:#fff;padding:12px 15px;border-radius:12px;font-weight:750;min-height:46px}.btn.alt{background:#fff;color:#111}.btn.subtle{border-color:#ddd;background:#f6f6f6;color:#111}.footer .btn{flex:1}.link{background:none;border:0;padding:0;color:#1556d4;text-decoration:underline;font-weight:650;text-align:left}.field{display:flex;flex-direction:column;gap:6px;font-weight:650}.field input,.field select{width:100%;padding:12px;border:2px solid #bbb;border-radius:10px;background:white;min-height:46px}.card{border:2px solid #ddd;border-radius:14px;padding:13px;display:flex;flex-direction:column;gap:9px}.card.selected{border-color:#111;background:#f6f6f6}.choice{display:flex;align-items:center;gap:12px;text-align:left;width:100%;border:2px solid #ddd;background:white;border-radius:13px;padding:14px;font-weight:700;min-height:56px}.choice.selected{border-color:#111;background:#f2f2f2}.choice .grow{flex:1}.pill{display:inline-block;padding:4px 8px;border:1px solid #ccc;border-radius:99px;font-size:.75rem}.status{padding:12px;border-radius:10px;background:#f1f1f1;font-size:.92rem}.ok{color:#167b34;font-weight:900}.bad{color:#b52d2d;font-weight:900}.gradeA,.gradeB{color:#16843a}.gradeC{color:#a77900}.gradeD,.gradeF{color:#bc2929}.score{font-size:3.6rem;font-weight:900;line-height:1}.progress{height:9px;background:#ddd;border-radius:99px;overflow:hidden}.progress>div{height:100%;background:#111}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.small{font-size:.86rem}.notice{border-left:4px solid #111;padding:9px 12px;background:#f5f5f5}.center{text-align:center}.grow{flex:1}.right{margin-left:auto}.tag{font-size:.76rem;background:#eee;border-radius:6px;padding:4px 7px;overflow-wrap:anywhere}.checkrow{display:flex;align-items:center;gap:10px;justify-content:space-between;border-bottom:1px solid #eee;padding:8px 0}.checkrow strong{flex:1}.scrolllist{max-height:40dvh;overflow:auto;padding-right:3px}.hide{display:none!important}.inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.toast{position:fixed;top:15px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:12px 18px;border-radius:12px;z-index:20;max-width:92vw;text-align:center;box-shadow:0 6px 24px #0004}.warning{color:#b52d2d;font-weight:700}@media(max-height:720px){.content{padding-top:14px;gap:11px}.card{padding:10px}.top{padding:12px 18px 8px}.choice{padding:10px;min-height:44px}} 
+</style></head><body><div id="app"></div><script>
+'use strict';
+const KEY='essazlife-babiez-v3';
+const ROLES=['Mom','Dad','Grandma','Grandpa','Aunt','Uncle','Sibling','Babysitter','Guardian','Custom'];
+const ITEMS=[['bottle','Bottle'],['diaper1','Diaper #1'],['diaper2','Diaper #2'],['wipes','Baby Wipes'],['cream','Diaper Rash Cream'],['thermometer','Thermometer'],['teether','Teething Ring'],['soap','Soap'],['sleep','Safe Sleeping Spot'],['carseat','Car Seat'],['medicine','Medicine'],['aspirator','Nasal Aspirator'],['pacifier','Pacifier']];
+const REQUIRED=ITEMS.filter(x=>x[0]!=='pacifier');
+const DEMO_IDS=Object.fromEntries(ITEMS.map(([k])=>[k,'ESSAZ-'+({diaper1:'DIAPER1',diaper2:'DIAPER2',sleep:'SLEEP',teether:'TEETHER',carseat:'CARSEAT',aspirator:'ASPIRATOR',cream:'CREAM'}[k]||k.toUpperCase())+'-DEMO']));
+const NEEDS=[{id:'feed',label:'Hungry baby',item:'bottle',prompt:'Scan the bottle NFC sticker.',message:'Neh… baby is hungry.'},{id:'diaper',label:'Diaper change',item:'diaper1',prompt:'Scan either diaper sticker.',message:'Baby needs a fresh diaper.'},{id:'wipe',label:'Wipe baby',item:'wipes',prompt:'Scan baby wipes.',message:'Time to clean baby.'},{id:'cream',label:'Apply rash cream',item:'cream',prompt:'Scan diaper rash cream.',message:'Baby has a little diaper irritation.'},{id:'temperature',label:'Check temperature',item:'thermometer',prompt:'Scan the thermometer.',message:'Baby feels warm.'},{id:'sleep',label:'Sleepy baby',item:'sleep',prompt:'Scan the safe sleeping spot.',message:'Owh… baby is sleepy.'},{id:'bath',label:'Bath time',item:'soap',prompt:'Scan the soap.',message:'Baby needs a bath.'},{id:'outing',label:'Car seat',item:'carseat',prompt:'Scan the car seat.',message:'Time for an outing.'},{id:'medicine',label:'Medicine check',item:'medicine',prompt:'Scan the medicine bottle.',message:'Follow the simulated care plan.'},{id:'nose',label:'Stuffy nose',item:'aspirator',prompt:'Scan the nasal aspirator.',message:'Baby sounds stuffy.'},{id:'diaper2',label:'Another diaper change',item:'diaper2',prompt:'Scan the second diaper sticker.',message:'Baby needs another diaper.'},{id:'pacifier',label:'Comfort baby',item:'pacifier',prompt:'Scan the pacifier or caregiver band.',message:'Baby wants comforting.'},{id:'teether',label:'Teething',item:'teether',prompt:'Scan the teething ring.',message:'Baby wants to chew.'}];
+const uid=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
+const safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let db;try{db=JSON.parse(localStorage.getItem(KEY))||{};}catch{db={}};
+db.caregivers ||= [];db.babies ||= [];db.tags ||= {};db.reports ||= [];db.settings ||= {helpUrl:''};
+let page='home', wizard=null, session=null, pendingScan=null, nfcController=null, scannerActive=false, toastTimer=null, tickTimer=null, audioCtx=null, toneEnabled=true;
+const save=()=>localStorage.setItem(KEY,JSON.stringify(db));
+const babyById=id=>db.babies.find(x=>x.id===id);
+const caregiverById=id=>db.caregivers.find(x=>x.id===id);
+const ageMonths=b=>b?.ageMode==='birth'&&b.birth?Math.max(0,Math.min(24,Math.floor((Date.now()-new Date(b.birth+'T12:00:00').getTime())/2629800000))):Number(b?.months||0);
+const neededItems=b=>REQUIRED.filter(([k])=>k!=='teether'||ageMonths(b)>=3);
+const allRegistered=b=>neededItems(b).every(([k])=>!!db.tags[k]);
 const $=id=>document.getElementById(id);
-let babies=[];
-let activeBabyId=null;
-let babyEditId=null;
-let caregivers=[];
-let history=[];
-let mode=null;
-let targetId=null;
-let scanner=null;
-let scanController=null;
-let audioContext=null;
-let session=null;
-let listener=null;
-let listenerController=null;
-
-function newId(){
-  return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() :
-    "person-"+Date.now()+"-"+Math.random().toString(36).slice(2);
+function showToast(msg){let el=$('toast');if(!el){el=document.createElement('div');el.id='toast';el.className='toast';document.body.append(el)}el.textContent=msg;el.classList.remove('hide');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.add('hide'),3400)}
+function beep(freq=520,ms=120){if(!toneEnabled)return;try{audioCtx ||=new(window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';o.frequency.value=freq;g.gain.value=.045;o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+ms/1000)}catch{}}
+function render(){const app=$('app');app.innerHTML=`<main class="shell"><header class="top"><div><div class="brand">ESSAzLife Babiez 🍼</div><div class="tiny">NFC-powered baby care</div></div><button class="btn alt small" style="padding:7px 10px;min-height:36px" onclick="goHome()">Home</button></header><section class="content" id="screen"></section><footer class="footer" id="footer"></footer></main>`;const f=$('footer');if(!db.caregivers.length&&page==='home')page='welcome';({welcome:welcomeScreen,caregiver:caregiverScreen,caregiverMore:moreCaregiversScreen,baby:babyScreen,primary:primaryScreen,accessories:accessoriesScreen,home:homeScreen,choose:chooseScreen,modes:modesScreen,prepare:prepareScreen,live:liveScreen,report:reportScreen,settings:settingsScreen,reports:reportsScreen,help:helpScreen}[page]||homeScreen)();if(!f.children.length)f.classList.add('hide')}
+function screen(html,buttons=[]){$('screen').innerHTML=html;const f=$('footer');f.innerHTML=buttons.map((b,i)=>`<button class="btn ${b.alt?'alt':''}" id="action${i}" ${b.disabled?'disabled':''}>${safe(b.label)}</button>`).join('');buttons.forEach((b,i)=>$('action'+i).onclick=b.fn)}
+function goHome(){cancelPending();wizard=null;page='home';render()}
+function beginWizard(kind){wizard={kind,babyId:null,caregiverId:null,step:kind==='first'?'caregiver':'baby'};page=wizard.step;render()}
+function welcomeScreen(){screen(`<h1>Welcome to ESSAzLife Babiez.</h1><p>An app designed with NFC Tag use.</p><button class="link" onclick="page='help';render()">I need setup help</button><div class="card"><h2>Care for your baby, one tap at a time.</h2><p class="muted">Set up caregivers, babies, and NFC accessories. Then choose a simulation.</p></div><p class="small muted">For Android Chrome with NFC on, use HTTPS. Keep this page open while scanning.</p>`,[{label:'Get Started',fn:()=>beginWizard('first')}])}
+function helpScreen(){screen(`<h1>Setup help</h1><p>Write an NDEF <b>text</b> record to each NFC sticker using an NFC writing app. You can use IDs such as <span class="tag">ESSAZ-BOTTLE-DEMO</span>, or let Babiez learn any unique text tag.</p><p>Tap <b>Scan Tag</b>, then hold your phone against the sticker. Chrome on Android requires NFC permission and HTTPS.</p><p class="notice">Video help: paste your YouTube URL in Settings. The help button will open YouTube directly, not an embedded player.</p><button class="btn alt" onclick="openHelpVideo()">Open YouTube setup video</button>`,[{label:'Back',alt:true,fn:()=>{page=db.caregivers.length?'home':'welcome';render()}}])}
+function openHelpVideo(){if(!db.settings.helpUrl){showToast('Add your YouTube setup URL in Settings first.');return}window.open(db.settings.helpUrl,'_blank','noopener,noreferrer')}
+function caregiverScreen(){screen(`<h1>Add your ${db.caregivers.length?'next':'first'} caregiver.</h1><label class="field">Caregiver name<input id="cgName" maxlength="45" placeholder="e.g. Alex" autocomplete="off"></label><label class="field">Permanent relationship role<select id="cgRole">${ROLES.map(r=>`<option>${r}</option>`).join('')}</select></label><label class="field hide" id="customRoleBox">Custom role<input id="cgCustom" maxlength="30" placeholder="Relationship"></label><div class="card"><p>Caregiver NFC band</p><button class="btn alt" onclick="scanFor('caregiver')">Scan caregiver tag</button><div class="small muted" id="tagStatus">No tag scanned yet</div></div><p class="small muted">Relationship role is permanent once saved. You can replace a lost band later without losing care history.</p>`,[{label:'Back',alt:true,fn:()=>{page=wizard?.kind==='first'?'welcome':'settings';render()}},{label:'Save Caregiver',fn:saveCaregiver}]);$('cgRole').onchange=()=>$('customRoleBox').classList.toggle('hide',$('cgRole').value!=='Custom')}
+function saveCaregiver(){const name=$('cgName').value.trim(),role=$('cgRole').value==='Custom'?$('cgCustom').value.trim():$('cgRole').value,tag=wizard?.newTag;if(!name||!role)return showToast('Enter a name and role.');if(!tag)return showToast('Scan the caregiver NFC band first.');if(db.caregivers.some(c=>c.tag===tag))return showToast('This band belongs to another caregiver.');const c={id:uid(),name,role,tag};db.caregivers.push(c);save();beep(730);if(wizard?.kind==='first'){wizard.caregiverId=c.id;page='caregiverMore'}else{page='settings'}render();if(page==='caregiverMore')moreCaregiversScreen()}
+function moreCaregiversScreen(){page='caregiverMore';screen(`<h1>Add another caregiver?</h1><p>You can always add more caregivers later.</p><div class="card">${db.caregivers.map(c=>`<p><b>${safe(c.name)}</b> · ${safe(c.role)}</p>`).join('')}</div>`,[{label:'Add Another',alt:true,fn:()=>{wizard.newTag=null;page='caregiver';render()}},{label:'Next',fn:()=>{page='baby';render()}}])}
+function babyScreen(){screen(`<h1>Add your ${db.babies.length?'new':'first'} baby.</h1><label class="field">Baby's name<input id="babyName" maxlength="45" placeholder="Baby name"></label><label class="field">Gender<select id="babyGender"><option>Girl</option><option>Boy</option><option>Other / Prefer not to say</option></select></label><label class="field">Age method<select id="ageMode"><option value="months">Age in months</option><option value="birth">Birth date (updates automatically)</option></select></label><label class="field" id="monthsBox">Age (0–24 months)<input id="babyMonths" type="number" min="0" max="24" value="0"></label><label class="field hide" id="birthBox">Birth date<input id="babyBirth" type="date"></label><p class="small muted">Teething ring is required only for babies 3 months or older.</p>`,[{label:'Back',alt:true,fn:()=>{page=wizard?.kind==='first'?'caregiverMore':'home';render()}},{label:'Next',fn:saveBaby}]);$('ageMode').onchange=()=>{$('monthsBox').classList.toggle('hide',$('ageMode').value==='birth');$('birthBox').classList.toggle('hide',$('ageMode').value!=='birth')}}
+function saveBaby(){const name=$('babyName').value.trim(),ageMode=$('ageMode').value,months=Number($('babyMonths').value),birth=$('babyBirth').value;if(!name)return showToast('Enter a baby name.');if(ageMode==='months'&&(!Number.isInteger(months)||months<0||months>24))return showToast('Choose an age from 0 to 24 months.');if(ageMode==='birth'&&(!birth||new Date(birth)>new Date()))return showToast('Enter a valid birth date.');const b={id:uid(),name,gender:$('babyGender').value,ageMode,months,birth,primaryId:null};db.babies.push(b);wizard ||= {};wizard.babyId=b.id;save();page='primary';render()}
+function primaryScreen(){const b=babyById(wizard?.babyId);if(!b)return goHome();screen(`<h1>Who will be ${safe(b.name)}'s primary caregiver?</h1><div class="scrolllist">${db.caregivers.map(c=>`<button class="choice ${wizard.caregiverId===c.id?'selected':''}" onclick="wizard.caregiverId='${c.id}';render()"><span class="grow">${safe(c.name)}</span><span class="pill">${safe(c.role)}</span></button>`).join('')}</div>`,[{label:'Next',fn:()=>{if(!wizard.caregiverId)return showToast('Choose a caregiver.');b.primaryId=wizard.caregiverId;save();page='accessories';render()}}])}
+function accessoriesScreen(){const b=babyById(wizard?.babyId||session?.babyId);if(!b)return goHome();const items=neededItems(b),done=items.filter(([k])=>db.tags[k]).length;screen(`<h1>${safe(b.name)}'s accessories</h1><p class="muted">Scan each required accessory once. Registered accessories can be shared with all babies.</p><div class="progress"><div style="width:${100*done/items.length}%"></div></div><p class="small">${done} of ${items.length} required accessories registered</p><div class="scrolllist">${items.map(([k,label])=>`<div class="checkrow"><span class="${db.tags[k]?'ok':'bad'}">${db.tags[k]?'✓':'✕'}</span><strong>${safe(label)}</strong><button class="btn alt small" style="padding:6px 9px;min-height:34px" onclick="scanFor('accessory','${k}')">${db.tags[k]?'Replace':'Scan'}</button></div>`).join('')}<div class="checkrow"><span class="${db.tags.pacifier?'ok':'muted'}">${db.tags.pacifier?'✓':'○'}</span><strong>Pacifier (optional)</strong><button class="btn alt" style="padding:6px 9px;min-height:34px" onclick="scanFor('accessory','pacifier')">Scan</button></div></div><p class="small muted">If you don't have a physical item during a simulation, tap your caregiver band to use the fallback. Registering stickers is still required for the standard setup.</p>`,[{label:'Back',alt:true,fn:()=>{page='primary';render()}},{label:'Next',fn:()=>{if(!allRegistered(b))return showToast('Register the required tags to continue.');wizard=null;session={babyId:b.id};page='modes';render()}}])}
+function homeScreen(){if(!db.caregivers.length){page='welcome';return welcomeScreen()}screen(`<h1>Choose a baby to begin</h1>${session?.running?`<div class="notice"><b>Active Session</b> · ${safe(babyById(session.babyId)?.name)} ${session.paused?'(Paused)':''}<button class="btn alt" style="margin-top:9px;width:100%" onclick="page='live';render()">Return to session</button></div>`:''}<div class="scrolllist">${db.babies.map(b=>`<button class="choice" onclick="chooseBaby('${b.id}')"><span class="grow">${safe(b.name)}<div class="small muted">${ageMonths(b)} months · ${safe(b.gender)}</div></span><span>›</span></button>`).join('')}</div><button class="choice" onclick="beginWizard('newbaby')"><span class="grow">＋ Add a new baby</span></button><div class="grid2"><button class="btn alt" onclick="page='settings';render()">Caregivers & Settings</button><button class="btn alt" onclick="page='reports';render()">Report Cards</button></div>`,[])}
+function chooseBaby(id){const b=babyById(id);if(!b)return;if(!b.primaryId){wizard={babyId:id,caregiverId:null};page='primary'}else if(!allRegistered(b)){wizard={babyId:id,caregiverId:b.primaryId};page='accessories'}else{session={babyId:id};page='modes'}render()}
+function modesScreen(){const b=babyById(session?.babyId);if(!b)return goHome();screen(`<h1>Choose a simulation</h1><p class="muted">${safe(b.name)} · ${ageMonths(b)} months</p><button class="choice" onclick="startMode('demo')"><span class="grow">🎓 Demo<div class="small muted">Guided, immediate accessory practice</div></span>›</button><div class="card"><h2>Classic</h2><div class="grid2"><button class="btn alt" onclick="startMode('easy')">Easy</button><button class="btn alt" onclick="startMode('medium')">Medium</button><button class="btn alt" onclick="startMode('hard')">Hard</button><button class="btn alt" onclick="startMode('sick')">Sick (Cold)</button></div><p class="small muted">Babies can develop mild cold symptoms in other modes, too.</p></div><button class="choice" onclick="startMode('daycare')"><span class="grow">🕒 Daycare<div class="small muted">Care needs arise in scheduled windows</div></span>›</button>`,[{label:'Back',alt:true,fn:goHome}])}
+function startMode(mode){session={babyId:session.babyId,mode,caregiverId:babyById(session.babyId).primaryId,started:0,score:100,events:[],completed:0,paused:false,running:false,need:null,needSince:0,nextAt:0,warningCount:0,step:0,feedingStage:'',ounces:0,deadline:0,prepEnd:Date.now()+300000,grace:mode==='easy'?85000:mode==='medium'?60000:mode==='hard'?40000:mode==='sick'?35000:mode==='daycare'?75000:999999};page='prepare';render()}
+function prepareScreen(){const b=babyById(session?.babyId);if(!b)return goHome();screen(`<h1>Get ready for ${safe(b.name)}!</h1><p>Gather everything you need for baby's simulation.</p><div class="card center"><div class="score" id="prepClock">5:00</div><p class="muted">Preparation time remaining</p></div><p class="notice">The simulation will <b>never start automatically</b>. You decide when you're ready.</p><button class="btn alt" onclick="session.prepEnd+=300000;updatePrepClock()">I Need More Time (+5 min)</button><div class="card"><p><b>Starting caregiver</b></p><select id="startCg" onchange="session.caregiverId=this.value">${db.caregivers.map(c=>`<option value="${c.id}" ${session.caregiverId===c.id?'selected':''}>${safe(c.name)} (${safe(c.role)})</option>`).join('')}</select></div>`,[{label:'Back',alt:true,fn:()=>{page='modes';render()}},{label:"I'm Ready",fn:beginSession}]);updatePrepClock()}
+function updatePrepClock(){if(page!=='prepare'||!session)return;const s=Math.max(0,Math.ceil((session.prepEnd-Date.now())/1000));if($('prepClock'))$('prepClock').textContent=`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`}
+function beginSession(){session.running=true;session.started=Date.now();session.nextAt=Date.now()+(session.mode==='demo'?0:10000);session.step=0;session.events=[];session.score=100;session.completed=0;page='live';render();startNfcListener();if(session.mode==='demo')activateNextNeed();else showToast('Simulation started. Keep this page open for NFC scans.')}
+function modeNeeds(){let a=NEEDS.filter(n=>n.id!=='teether'||ageMonths(babyById(session.babyId))>=3);if(!db.tags.pacifier)a=a.filter(n=>n.id!=='pacifier');return a}
+function activateNextNeed(){if(!session?.running||session.paused)return;let options=modeNeeds();if(session.mode==='demo'){if(session.step>=options.length){finishSession();return}session.need={...options[session.step]};}else{const pool=options.filter(n=>n.id!=='medicine'||session.mode==='sick'||Math.random()<.15);session.need={...pool[Math.floor(Math.random()*pool.length)]};}session.needSince=Date.now();session.warningCount=0;session.penalized=false;session.feedingStage='';session.ounces=0;session.deadline=0;session.events.push({type:'need',id:session.need.id,at:Date.now(),caregiverId:session.caregiverId});if(session.need.id==='feed')showToast('Neh… baby is hungry.');else if(session.need.id==='sleep')showToast('Owh… baby is sleepy.');else if(session.need.id==='nose')showToast('Baby has a stuffy nose.');render()}
+function liveScreen(){if(!session?.running)return goHome();const b=babyById(session.babyId),cg=caregiverById(session.caregiverId),n=session.need;screen(`<h1>${safe(b.name)} · ${safe(session.mode.toUpperCase())}</h1><div class="inline"><span class="pill">${safe(cg?.name||'Caregiver')} · ${safe(cg?.role||'')}</span><span class="pill">Score: <b id="liveScore">${session.score}%</b></span><span class="pill" id="liveTime">00:00</span></div>${session.paused?`<div class="card center"><h2>⏸ On a break</h2><p>Baby's needs, timers, sounds and scoring are paused.</p></div>`:`<div class="card"><h2>${n?safe(n.label):'Baby is content 🤍'}</h2><p>${n?safe(n.message):'Keep an eye on baby. The next care need is coming.'}</p>${n?`<p class="notice">${safe(n.prompt)}</p><p class="small muted" id="careTime">Waiting for care…</p>`:''}${n?.id==='feed'?`<p id="feedInfo" class="small">${session.feedingStage==='making'?'Bottle scanned. Tap Bottle Made.':session.feedingStage==='settling'?'Bottle prepared. Baby is settling…':session.feedingStage==='burp'?'1 oz finished. Scan caregiver band to burp.':session.feedingStage==='continue'?'Scan bottle again for the next ounce.':session.feedingStage==='done'?'Feeding complete.':'Scan bottle to prepare feeding.'}</p>${session.feedingStage==='making'?`<button class="btn" onclick="bottleMade()">Bottle Made</button>`:''}`:''}</div>`}<div class="card"><h2>NFC reader</h2><p class="small" id="nfcState">${scannerActive?'Listening for NFC tags':'Tap Enable NFC to start scanning'}</p><button class="btn alt" onclick="startNfcListener()">Enable / Restart NFC</button><p class="small muted">Any registered caregiver band switches caregiver immediately. If an item is missing, scan the caregiver band and choose the fallback.</p></div><div class="grid2"><button class="btn alt" onclick="togglePause()">${session.paused?'Resume':'I Need a Break'}</button><button class="btn alt" onclick="finishSession()">End Simulation</button></div>${session.mode==='demo'?`<p class="small muted">Guided demo: ${session.step+1} of ${modeNeeds().length} care activities. No changes to saved live reports.</p>`:''}`,[])}
+function togglePause(){if(!session?.running)return;if(!session.paused){session.paused=true;session.pauseAt=Date.now();session.events.push({type:'break',at:Date.now()});}else{const delta=Date.now()-session.pauseAt;session.paused=false;session.needSince+=delta;session.nextAt+=delta;session.deadline+=session.deadline?delta:0;session.started+=delta;}render()}
+function tick(){if(page==='prepare')updatePrepClock();if(!session?.running||session.paused)return;const now=Date.now();if(page==='live'){$('liveScore')&&($('liveScore').textContent=session.score+'%');$('liveTime')&&($('liveTime').textContent=formatTime(now-session.started));$('careTime')&&($('careTime').textContent='Waiting '+formatTime(now-session.needSince));}
+if(!session.need&&now>=session.nextAt){activateNextNeed();return}if(!session.need)return;
+if(session.feedingStage==='settling'&&now>=session.deadline){session.feedingStage='burp';session.ounces++;showToast('1 ounce finished! Scan caregiver band to burp.');render();return}
+if(session.need.id==='feed'&&!session.feedingStage&&session.warningCount<5&&now-session.needSince>=session.warningCount*4000){session.warningCount++;if(session.warningCount<=5)showToast('Neh… hungry warning '+session.warningCount+'/5');}
+if(!session.penalized&&now-session.needSince>session.grace&&session.feedingStage!=='settling'&&session.feedingStage!=='burp'&&session.feedingStage!=='making'){session.penalized=true;session.score=Math.max(0,session.score-10);session.events.push({type:'late',need:session.need.id,at:now,caregiverId:session.caregiverId});beep(210,400);showToast('Care was delayed. −10 points.');}
 }
-function readArray(key){
-  try{const value=JSON.parse(localStorage.getItem(key));return Array.isArray(value)?value:[];}
-  catch{return [];}
-}
-function save(){
-  localStorage.setItem(KEY,JSON.stringify(caregivers));
-  localStorage.setItem(HISTORY_KEY,JSON.stringify(history));
-}
-function initialize(){
-  babies=readArray(BABIES_KEY);
-  activeBabyId=localStorage.getItem(ACTIVE_BABY_KEY);
-  caregivers=readArray(KEY);
-  history=readArray(HISTORY_KEY);
-  // One-time migration from the original single-caregiver prototype.
-  if(!localStorage.getItem(KEY)){
-    try{
-      const old=JSON.parse(localStorage.getItem(OLD_KEY));
-      if(old && typeof old.name==="string" && typeof old.id==="string" && old.id.startsWith("ESSAZ-CAREGIVER-")){
-        caregivers.push({profileId:newId(),name:old.name,tagId:old.id});
-      }
-    }catch{}
-    save();
-  }
-  render();
-  renderBabies();
-  try {const saved=JSON.parse(localStorage.getItem(SESSION_KEY)); if(saved && saved.active && saved.babyId && babies.some(b=>b.profileId===saved.babyId))session=saved;}catch{}
-  renderSession();
-}
-function status(message,success=false){
-  $("status").textContent=message;
-  $("status").classList.toggle("success",success);
-}
-function prepareAudio(){
-  try{
-    const AudioClass=window.AudioContext||window.webkitAudioContext;
-    if(!AudioClass)return;
-    if(!audioContext)audioContext=new AudioClass();
-    if(audioContext.state==="suspended")audioContext.resume().catch(()=>{});
-  }catch(e){console.warn("Audio unavailable",e);}
-}
-function playScanSound(){
-  try{
-    prepareAudio();
-    if(!audioContext||audioContext.state!=="running")return;
-    const now=audioContext.currentTime;
-    [660,880].forEach((frequency,index)=>{
-      const oscillator=audioContext.createOscillator();
-      const gain=audioContext.createGain();
-      const start=now+index*0.15;
-      oscillator.type="sine";
-      oscillator.frequency.value=frequency;
-      gain.gain.setValueAtTime(0.0001,start);
-      gain.gain.exponentialRampToValueAtTime(0.2,start+0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001,start+0.13);
-      oscillator.connect(gain);
-      gain.connect(audioContext.destination);
-      oscillator.start(start);
-      oscillator.stop(start+0.14);
-    });
-  }catch(e){console.warn("Scan sound unavailable",e);}
-}
-function render(){
-  const container=$("caregivers");
-  container.replaceChildren();
-  renderSessionRoles();
-  if(!caregivers.length){
-    const p=document.createElement("p");p.className="muted";
-    p.textContent="No caregivers registered yet.";
-    container.append(p);
-  }
-  for(const person of caregivers){
-    const card=document.createElement("div");card.className="card";
-    const name=document.createElement("strong");name.textContent=person.name;
-    const id=document.createElement("small");id.textContent="NFC: "+person.tagId;
-    const actions=document.createElement("div");actions.className="actions";
-    const replace=document.createElement("button");replace.className="secondary";
-    replace.textContent="Replace NFC";
-    replace.onclick=()=>openEditor("replace",person.profileId);
-    const remove=document.createElement("button");remove.className="secondary";
-    remove.textContent="Remove";
-    remove.onclick=()=>removeCaregiver(person.profileId);
-    actions.append(replace,remove);
-    card.append(name,id,actions);
-    container.append(card);
-  }
-}
-function openEditor(nextMode,id=null){
-  stopScan();
-  mode=nextMode;targetId=id;
-  const person=caregivers.find(p=>p.profileId===id);
-  $("editorTitle").textContent=nextMode==="replace"?"Replace NFC Sticker":"Add Caregiver";
-  $("name").value=person?.name||"";
-  $("name").disabled=nextMode==="replace";
-  $("editorHint").textContent=nextMode==="replace"
-    ?"Scan a new, uniquely programmed caregiver sticker. The caregiver's name and history will stay intact."
-    :"Enter a name, then scan that person's uniquely programmed NFC sticker.";
-  $("editor").classList.remove("hidden");
-  $("add").classList.add("hidden");
-  status("Ready to "+(nextMode==="replace"?"replace the NFC sticker.":"register a caregiver."));
-}
-function closeEditor(){
-  stopScan();mode=null;targetId=null;
-  $("editor").classList.add("hidden");
-  $("add").classList.remove("hidden");
-  $("name").disabled=false;
-}
-function removeCaregiver(id){
-  const person=caregivers.find(p=>p.profileId===id);
-  if(!person)return;
-  if(!confirm("Remove "+person.name+" from active caregivers? Their existing care history will be kept."))return;
-  stopScan();
-  caregivers=caregivers.filter(p=>p.profileId!==id);
-  save();render();closeEditor();
-  status(person.name+" was removed. Existing care history is preserved.",true);
-}
-function stopScan(){
-  if(scanController){scanController.abort();scanController=null;}
-  if(scanner){scanner.onreading=null;scanner.onreadingerror=null;scanner=null;}
-}
-function parseTag(event){
-  for(const record of event.message.records){
-    if(record.recordType!=="text")continue;
-    try{
-      const value=new TextDecoder(record.encoding||"utf-8").decode(record.data).trim();
-      if(/^ESSAZ-CAREGIVER-[A-Za-z0-9-]+$/.test(value))return value;
-    }catch(e){console.warn("Could not decode NFC text",e);}
-  }
-  return null;
-}
-async function scan(requestedMode){
-  if(session?.active){status("End the test session before editing caregiver tags. During the session, scan tags directly to switch caregivers.");return;}
-  if(!("NDEFReader" in window)){
-    status("Web NFC is unavailable. Use Chrome on an NFC-compatible Android phone.");return;
-  }
-  if(scanner){status("A scan is already in progress. Hold your sticker against the phone.");return;}
-  if(requestedMode==="add" && !$("name").value.trim()){
-    status("Enter the caregiver's name first.");return;
-  }
-  const name=$("name").value.trim();
-  const selectedProfile=targetId;
-  prepareAudio();
-  const reader=new NDEFReader();
-  const controller=new AbortController();
-  scanner=reader;scanController=controller;
-  reader.onreading=event=>{
-    if(scanner!==reader)return;
-    const tagId=parseTag(event);
-    if(!tagId){status("This tag doesn't contain a valid ESSAzLife caregiver ID. Try again.");return;}
-    const duplicate=caregivers.find(p=>p.tagId===tagId);
-    if(requestedMode==="identify"){
-      if(!duplicate){status("This caregiver NFC isn't registered. Use Add Caregiver first.");return;}
-      stopScan();playScanSound();
-      status("✓ SCAN SUCCESSFUL!\nHello, "+duplicate.name+"!",true);
-      return;
-    }
-    if(duplicate && (requestedMode==="add" || duplicate.profileId!==selectedProfile)){
-      status("This NFC sticker is already registered to "+duplicate.name+". Use a different sticker.");return;
-    }
-    if(requestedMode==="add"){
-      caregivers.push({profileId:newId(),name,tagId});
-      save();render();closeEditor();playScanSound();
-      status("✓ SCAN SUCCESSFUL!\n"+name+" is registered!",true);
-      return;
-    }
-    if(requestedMode==="replace"){
-      const person=caregivers.find(p=>p.profileId===selectedProfile);
-      if(!person){stopScan();status("Caregiver not found. Try again.");return;}
-      person.tagId=tagId;
-      save();render();closeEditor();playScanSound();
-      status("✓ SCAN SUCCESSFUL!\n"+person.name+"'s NFC sticker was replaced. Their history is preserved!",true);
-    }
-  };
-  reader.onreadingerror=()=>status("Couldn't read the sticker. Hold it closer and try again.");
-  status("READY TO SCAN\n\nHold your caregiver NFC sticker against the back of your phone.");
-  try{await reader.scan({signal:controller.signal});}
-  catch(error){
-    if(scanner===reader)stopScan();
-    if(error.name!=="AbortError")status("NFC couldn't start: "+error.message);
-  }
-}
-
-// =====================================
-// BABY PROFILES (LOCAL STORAGE)
-// =====================================
-function saveBabies(){
-  localStorage.setItem(BABIES_KEY,JSON.stringify(babies));
-  if(activeBabyId)localStorage.setItem(ACTIVE_BABY_KEY,activeBabyId);
-  else localStorage.removeItem(ACTIVE_BABY_KEY);
-}
-function babyAge(b){
-  if(b.ageMode==="manual")return b.manualMonths+" months (simulated)";
-  if(!b.birthDate)return "Birth date not set";
-  const today=new Date();
-  const born=new Date(b.birthDate+"T12:00:00");
-  if(Number.isNaN(born.getTime()))return "Invalid birth date";
-  let months=(today.getFullYear()-born.getFullYear())*12+today.getMonth()-born.getMonth();
-  if(today.getDate()<born.getDate())months--;
-  return Math.max(0,months)+" months old";
-}
-function renderBabies(){
-  const list=$("babies");list.replaceChildren();
-  if(!babies.length){const p=document.createElement("p");p.className="muted";p.textContent="No babies registered yet.";list.append(p);}
-  for(const baby of babies){
-    const card=document.createElement("div");card.className="card";
-    const title=document.createElement("strong");title.textContent=baby.name+(baby.profileId===activeBabyId?" (Selected)":"");
-    const info=document.createElement("small");info.textContent=babyAge(baby)+" · "+(baby.tagId?"NFC: "+baby.tagId:"No NFC sticker");
-    const actions=document.createElement("div");actions.className="actions";
-    function action(text,fn){const b=document.createElement("button");b.className="secondary";b.textContent=text;b.onclick=fn;actions.append(b);}
-    action("Select",()=>{activeBabyId=baby.profileId;saveBabies();renderBabies();status("Baby selected: "+baby.name,true);});
-    action("Edit",()=>openBabyEditor(baby.profileId));
-    action(baby.tagId?"Replace NFC":"Add NFC",()=>scanBabyTag(baby.profileId));
-    action("Remove",()=>{
-      if(!confirm("Remove "+baby.name+" from Babiez? This removes their saved profile."))return;
-      babies=babies.filter(b=>b.profileId!==baby.profileId);
-      if(activeBabyId===baby.profileId)activeBabyId=null;
-      saveBabies();renderBabies();status("Baby profile removed.");
-    });
-    card.append(title,info,actions);list.append(card);
-  }
-  const selected=babies.find(b=>b.profileId===activeBabyId);
-  $("activeBaby").textContent=selected?"Today's baby: "+selected.name+" · "+babyAge(selected):"No baby selected yet.";
-  renderSession();
-}
-function openBabyEditor(id=null){
-  stopScan();babyEditId=id;
-  const b=babies.find(b=>b.profileId===id);
-  $("babyEditorTitle").textContent=b?"Edit Baby":"Add Baby";
-  $("babyName").value=b?.name||"";
-  $("ageMode").value=b?.ageMode||"birth";
-  $("birthDate").value=b?.birthDate||"";
-  $("manualMonths").value=b?.manualMonths??0;
-  updateAgeFields();
-  $("babyEditor").classList.remove("hidden");$("addBaby").classList.add("hidden");
-}
-function closeBabyEditor(){babyEditId=null;$("babyEditor").classList.add("hidden");$("addBaby").classList.remove("hidden");}
-function updateAgeFields(){
-  const manual=$("ageMode").value==="manual";
-  $("manualFields").classList.toggle("hidden",!manual);
-  $("birthFields").classList.toggle("hidden",manual);
-}
-function saveBabyProfile(){
-  const name=$("babyName").value.trim();
-  const ageMode=$("ageMode").value;
-  const birthDate=$("birthDate").value;
-  const manualMonths=Number($("manualMonths").value);
-  if(!name){status("Enter your baby's name.");return;}
-  if(ageMode==="birth"&&(!birthDate||birthDate>new Date().toLocaleDateString("en-CA"))){status("Choose a valid birth date (not in the future).");return;}
-  if(ageMode==="manual"&&(!Number.isInteger(manualMonths)||manualMonths<0||manualMonths>24)){status("Enter a simulated age from 0 to 24 months.");return;}
-  let baby=babies.find(b=>b.profileId===babyEditId);
-  if(!baby){baby={profileId:newId(),tagId:null};babies.push(baby);}
-  Object.assign(baby,{name,ageMode,birthDate:ageMode==="birth"?birthDate:null,manualMonths:ageMode==="manual"?manualMonths:null});
-  if(!activeBabyId)activeBabyId=baby.profileId;
-  saveBabies();closeBabyEditor();renderBabies();status(name+"'s baby profile was saved!",true);
-}
-function parseBabyTag(event){
-  for(const record of event.message.records){
-    if(record.recordType!=="text")continue;
-    try{
-      const value=new TextDecoder(record.encoding||"utf-8").decode(record.data).trim();
-      if(/^ESSAZ-BABY-[A-Za-z0-9-]+$/.test(value))return value;
-    }catch(e){}
-  }
-  return null;
-}
-async function scanBabyTag(profileId=null){
-  if(session?.active){status("End the test session before changing baby tags.");return;}
-  if(!("NDEFReader" in window)){status("Baby NFC scanning needs Chrome on a compatible Android phone.");return;}
-  if(scanner){status("Another NFC scan is already running.");return;}
-  prepareAudio();
-  const reader=new NDEFReader(),controller=new AbortController();
-  scanner=reader;scanController=controller;
-  reader.onreading=event=>{
-    if(scanner!==reader)return;
-    const tagId=parseBabyTag(event);
-    if(!tagId){status("Not a valid baby sticker. Program a text record like ESSAZ-BABY-001, or select the baby manually.");return;}
-    const owner=babies.find(b=>b.tagId===tagId);
-    if(profileId===null){
-      if(!owner){status("Baby sticker not registered. Add it to a baby profile first.");return;}
-      activeBabyId=owner.profileId;saveBabies();renderBabies();stopScan();playScanSound();status("✓ SCAN SUCCESSFUL!\nBaby selected: "+owner.name,true);return;
-    }
-    const baby=babies.find(b=>b.profileId===profileId);
-    if(!baby){stopScan();status("Baby profile not found.");return;}
-    if(owner&&owner.profileId!==profileId){status("That sticker already belongs to "+owner.name+".");return;}
-    baby.tagId=tagId;saveBabies();renderBabies();stopScan();playScanSound();status("✓ SCAN SUCCESSFUL!\nNFC saved for "+baby.name,true);
-  };
-  reader.onreadingerror=()=>status("Couldn't read the baby sticker. Try again.");
-  status("READY TO SCAN\n\nHold the baby's NFC sticker against the phone.");
-  try{await reader.scan({signal:controller.signal});}
-  catch(error){if(scanner===reader)stopScan();if(error.name!=="AbortError")status("NFC couldn't start: "+error.message);}
-}
-// =====================================
-// LIVE SESSION: NFC CAREGIVER SWITCHING
-// =====================================
-const ROLE_OPTIONS=["Caregiver","Mom","Dad","Mama","Dada","Grandma","Grandpa","Aunt","Uncle","Sibling","Babysitter","Guardian","Other"];
-function sessionSave(){if(session)localStorage.setItem(SESSION_KEY,JSON.stringify(session));else localStorage.removeItem(SESSION_KEY);}
-function roleFor(person){return (session?.roles && session.roles[person.profileId]) || "Caregiver";}
-function renderSessionRoles(){
-  const root=$("sessionRoles");if(!root)return;
-  root.replaceChildren();
-  for(const person of caregivers){
-    const row=document.createElement("div");row.className="role-row";
-    const label=document.createElement("label");label.textContent=person.name;label.htmlFor="role-"+person.profileId;
-    const select=document.createElement("select");select.id="role-"+person.profileId;select.dataset.personId=person.profileId;
-    for(const role of ROLE_OPTIONS){const option=document.createElement("option");option.value=role;option.textContent=role;select.append(option);}
-    select.value=(session?.roles?.[person.profileId])||"Caregiver";
-    row.append(label,select);root.append(row);
-  }
-}
-function renderSession(){
-  if(!$('sessionSetup'))return;
-  const active=!!session?.active;
-  $('sessionSetup').classList.toggle('hidden',active);
-  $('sessionActive').classList.toggle('hidden',!active);
-  if(!active){renderSessionRoles();return;}
-  const baby=babies.find(b=>b.profileId===session.babyId);
-  $('sessionBabyName').textContent=baby?baby.name+' — Session Active':'Session Active';
-  const person=caregivers.find(p=>p.profileId===session.activeCaregiverId);
-  $('currentCaregiver').textContent=person?roleFor(person)+' — '+person.name:'No caregiver scanned yet';
-  $('sessionAnnouncement').textContent=session.lastMessage||'Waiting for a caregiver NFC tag…';
-  const log=$('sessionLog');log.replaceChildren();
-  for(const event of (session.events||[]).slice(-30).reverse()){
-    const li=document.createElement('li');
-    li.textContent=new Date(event.at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+' — '+event.message;
-    log.append(li);
-  }
-}
-function stopSessionListener(){
-  if(listenerController){listenerController.abort();listenerController=null;}
-  if(listener){listener.onreading=null;listener.onreadingerror=null;listener=null;}
-}
-async function listenForCaregivers(){
-  if(!session?.active)return;
-  if(!('NDEFReader' in window)){$('listenerState').textContent='Web NFC requires Android Chrome on an NFC-compatible phone.';return;}
-  if(listener){$('listenerState').textContent='NFC listener is already active.';return;}
-  if(scanner){stopScan();}
-  prepareAudio();
-  const reader=new NDEFReader();const controller=new AbortController();
-  listener=reader;listenerController=controller;
-  reader.onreading=event=>{
-    if(listener!==reader || !session?.active)return;
-    const tagId=parseTag(event);
-    if(!tagId)return;
-    const person=caregivers.find(p=>p.tagId===tagId);
-    if(!person){session.lastMessage='Unknown caregiver tag. Register it in Caregivers first.';renderSession();return;}
-    const label=roleFor(person);
-    session.activeCaregiverId=person.profileId;
-    session.lastMessage=label+' Detected!';
-    session.events.push({at:new Date().toISOString(),personId:person.profileId,role:label,message:label+' — '+person.name+' scanned in'});
-    sessionSave();renderSession();playScanSound();
-    $('listenerState').textContent='Listening continuously. Scan another registered caregiver tag to switch.';
-  };
-  reader.onreadingerror=()=>{$('listenerState').textContent='Could not read that tag. Try again.';};
-  $('listenerState').textContent='Starting NFC reader…';
-  try{
-    await reader.scan({signal:controller.signal});
-    $('listenerState').textContent='Listening continuously. Scan any registered caregiver tag.';
-  }catch(error){
-    if(listener===reader)stopSessionListener();
-    if(error.name!=='AbortError')$('listenerState').textContent='NFC listener stopped: '+error.message+' Tap Restart NFC Listener.';
-  }
-}
-$('beginSession').onclick=()=>{
-  const baby=babies.find(b=>b.profileId===activeBabyId);
-  if(!baby){status('Select a baby before starting a simulation.');return;}
-  if(!caregivers.length){status('Register at least one caregiver first.');return;}
-  const roles={};
-  for(const select of $('sessionRoles').querySelectorAll('select[data-person-id]'))roles[select.dataset.personId]=select.value;
-  session={active:true,babyId:baby.profileId,activeCaregiverId:null,roles,events:[],lastMessage:'Waiting for a caregiver NFC tag…',startedAt:new Date().toISOString()};
-  sessionSave();renderSession();listenForCaregivers();
-};
-$('restartListener').onclick=()=>{stopSessionListener();listenForCaregivers();};
-$('endSession').onclick=()=>{
-  if(!confirm('End this caregiver-switching test session?'))return;
-  stopSessionListener();session=null;sessionSave();renderSession();status('Test session ended. No caregiver registrations were changed.',true);
-};
-// An interrupted/closed tab cannot keep Web NFC running. Restart by tapping the listener button.
-$("ageMode").onchange=updateAgeFields;
-$("addBaby").onclick=()=>openBabyEditor();
-$("cancelBaby").onclick=()=>closeBabyEditor();
-$("saveBaby").onclick=saveBabyProfile;
-$("chooseBaby").onclick=()=>scanBabyTag();
-
-$("identify").onclick=()=>scan("identify");
-$("add").onclick=()=>openEditor("add");
-$("saveTag").onclick=()=>scan(mode);
-$("cancel").onclick=()=>{closeEditor();status("Ready.");};
-initialize();
-</script>
-</body>
-</html>
+function formatTime(ms){const t=Math.max(0,Math.floor(ms/1000));return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`}
+function bottleMade(){if(!session?.need||session.need.id!=='feed'||session.feedingStage!=='making')return;session.feedingStage='settling';session.deadline=Date.now()+10000;session.events.push({type:'bottle-made',at:Date.now()});showToast('Bottle made. Baby settles in 10 seconds.');render()}
+function handleLiveTag(value){if(!session?.running||session.paused)return;const caregiver=db.caregivers.find(c=>c.tag===value);if(caregiver){session.caregiverId=caregiver.id;session.events.push({type:'caregiver',caregiverId:caregiver.id,at:Date.now()});beep(740);showToast(caregiver.role+' Detected!');if(session.need?.id==='feed'&&session.feedingStage==='burp'){session.events.push({type:'burp',caregiverId:caregiver.id,at:Date.now()});if(session.ounces>=2){resolveNeed('Caregiver burped baby after feeding');}else{session.feedingStage='continue';render()}}else if(session.need){if(session.need.id==='pacifier'){resolveNeed('Comforted by caregiver');}else{showFallback(caregiver)}}else render();return}
+const k=Object.keys(db.tags).find(k=>db.tags[k]===value);if(!k){showToast('Unknown tag. Register it in Settings.');return}const n=session.need;if(!n){showToast(ITEMS.find(x=>x[0]===k)?.[1]+' scanned. Baby is content.');return}if(n.id==='feed'){if(k!=='bottle')return showToast('Baby needs the bottle first.');if(!session.feedingStage||session.feedingStage==='continue'){session.feedingStage='making';session.events.push({type:'bottle',at:Date.now(),caregiverId:session.caregiverId});showToast('Bottle detected! Tap Bottle Made.');render();}else showToast('Follow the feeding step on screen.');return}
+if(n.item===k||(n.id==='diaper'&&k==='diaper2')){if(n.id==='temperature')showToast('Simulated temperature: 98.6°F.');resolveNeed(ITEMS.find(x=>x[0]===k)?.[1]+' scanned');}else showToast('Not the requested item. '+n.prompt)}
+function showFallback(c){const n=session.need;if(!n)return;const existing=$('fallbackBox');if(existing)existing.remove();const box=document.createElement('div');box.id='fallbackBox';box.className='card';box.innerHTML=`<h2>Caregiver band detected</h2><p>${safe(c.name)} is caring for ${safe(babyById(session.babyId).name)}.</p><p>Don't have ${safe(ITEMS.find(x=>x[0]===n.item)?.[1])}? You can use the caregiver-band fallback. It will be marked as assisted care on the report.</p><button class="btn alt" id="fallbackBtn">Use caregiver fallback</button>`;$('screen')?.append(box);$('fallbackBtn').onclick=()=>resolveNeed('Caregiver fallback',true)}
+function resolveNeed(method,fallback=false){const n=session.need;if(!n)return;const delay=Date.now()-session.needSince;session.events.push({type:'resolved',need:n.id,at:Date.now(),delay,method,fallback,caregiverId:session.caregiverId});session.completed++;session.need=null;session.feedingStage='';session.penalized=false;session.nextAt=Date.now()+(session.mode==='demo'?999999:session.mode==='daycare'?45000:session.mode==='easy'?35000:session.mode==='medium'?25000:15000);if(fallback)session.score=Math.max(0,session.score-2);else session.score=Math.min(100,session.score+1);beep(690);showToast('Care complete! '+(fallback?'Assisted care recorded.':'Well done!'));if(session.mode==='demo'){session.step++;if(session.step>=modeNeeds().length){finishSession();return}session.need=null;page='live';render();const el=document.createElement('div');el.className='card';el.id='demoNext';el.innerHTML='<p>Great job! Ready for the next accessory?</p><button class="btn" id="demoAdvance">Next Care Activity</button>';$('screen').prepend(el);$('demoAdvance').onclick=()=>{el.remove();activateNextNeed()}}else render()}
+function finishSession(){if(!session)return;const s=session;s.running=false;s.ended=Date.now();const resolutions=s.events.filter(e=>e.type==='resolved');const late=s.events.filter(e=>e.type==='late');s.score=Math.max(0,Math.min(100,s.score));s.grade=s.score>=90?'A':s.score>=80?'B':s.score>=70?'C':s.score>=60?'D':'F';if(s.mode!=='demo'){db.reports.unshift({id:uid(),babyId:s.babyId,mode:s.mode,at:s.ended,score:s.score,grade:s.grade,events:s.events,completed:resolutions.length,late:late.length});db.reports=db.reports.slice(0,100);save()}stopNfc();page='report';render();beep(s.score>=70?820:190,350)}
+function reportScreen(){const s=session;if(!s)return goHome();const resolutions=s.events.filter(e=>e.type==='resolved'),late=s.events.filter(e=>e.type==='late');const grade=s.grade||'A';const cgStats=db.caregivers.map(c=>({c,done:resolutions.filter(e=>e.caregiverId===c.id).length})).filter(x=>x.done||x.c.id===s.caregiverId);screen(`<h1>${s.mode==='demo'?'Demo':'Simulation'} Report Card</h1><div class="card center"><div class="score grade${grade}">${grade}</div><h2>${s.score}%</h2><p>${safe(babyById(s.babyId)?.name)} · ${safe(s.mode)}</p></div><div class="grid2"><div class="card center"><b>${resolutions.length}</b><span class="small">Care activities</span></div><div class="card center"><b>${late.length}</b><span class="small">Delayed responses</span></div></div><div class="card"><h2>Caregivers</h2>${cgStats.map(x=>`<p>${safe(x.c.name)} (${safe(x.c.role)}): ${x.done} care actions</p>`).join('')||'<p>No completed care yet.</p>'}</div><button class="link" onclick="$('tips').classList.toggle('hide')">What can you do better?</button><div class="card hide" id="tips">${late.length?`<p>Respond sooner to: ${safe([...new Set(late.map(x=>NEEDS.find(n=>n.id===x.need)?.label||x.need))].join(', '))}.</p>`:'<p>Nice work responding promptly! Keep following the care prompts.</p>'}${resolutions.some(e=>e.fallback)?'<p>Try using the physical accessory tags when available; caregiver fallback was used.</p>':''}<p>Response times: ${resolutions.length?resolutions.map(e=>`${safe(NEEDS.find(n=>n.id===e.need)?.label||e.need)} ${formatTime(e.delay)}`).join(' · '):'None yet'}</p></div>${s.mode==='demo'?'<p class="small muted">Demo report only. It was not added to your live history.</p>':''}`, [{label:'Choose Baby',alt:true,fn:goHome},{label:s.mode==='demo'?'Restart Demo':'New Simulation',fn:()=>{const id=s.babyId;session={babyId:id};page='modes';render()}}])}
+function settingsScreen(){screen(`<h1>Caregivers & Settings</h1><h2>Caregivers</h2><div class="scrolllist">${db.caregivers.map(c=>`<div class="card"><p><b>${safe(c.name)}</b> · ${safe(c.role)}</p><div class="inline"><button class="btn alt small" onclick="replaceBand('${c.id}')">Replace NFC Band</button><button class="btn alt small" onclick="removeCaregiver('${c.id}')">Remove</button></div></div>`).join('')}</div><button class="btn alt" onclick="wizard={kind:'addcaregiver',newTag:null};page='caregiver';render()">＋ Add Caregiver</button><h2>Video setup help</h2><label class="field">YouTube video URL<input id="helpUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." value="${safe(db.settings.helpUrl||'')}"></label><button class="btn alt" onclick="saveHelpUrl()">Save Video Link</button><div class="card"><h2>Sound</h2><label class="inline"><input type="checkbox" ${toneEnabled?'checked':''} onchange="toneEnabled=this.checked"> Enable notification tones</label><p class="small muted">Freesound page links aren't directly playable audio files. Add licensed local sound files to the app to enable the requested recordings.</p></div>`,[{label:'Done',fn:goHome}])}
+function saveHelpUrl(){const v=$('helpUrl').value.trim();if(v&&!/^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(v))return showToast('Use a YouTube URL.');db.settings.helpUrl=v;save();showToast('Video link saved.')}
+function replaceBand(id){const c=caregiverById(id);if(!c)return;scanFor('replace',id)}
+function removeCaregiver(id){const c=caregiverById(id);if(!c||!confirm('Remove '+c.name+'? Past report data will remain but the profile will be removed.'))return;if(db.caregivers.length<=1)return showToast('Keep at least one caregiver.');db.caregivers=db.caregivers.filter(x=>x.id!==id);db.babies.forEach(b=>{if(b.primaryId===id)b.primaryId=db.caregivers[0].id});save();render()}
+function reportsScreen(){screen(`<h1>Saved Report Cards</h1><div class="scrolllist">${db.reports.map(r=>`<div class="card"><p><b>${safe(babyById(r.babyId)?.name||'Baby')}</b> · ${new Date(r.at).toLocaleDateString()}</p><p><b class="grade${r.grade}">${r.grade} · ${r.score}%</b> · ${safe(r.mode)} · ${r.completed} tasks</p></div>`).join('')||'<p>No saved simulations yet.</p>'}</div>`,[{label:'Back',fn:goHome}])}
+function cancelPending(){pendingScan=null}
+async function scanFor(type,id){if(!('NDEFReader'in window)){showToast('Web NFC requires Android Chrome, NFC enabled, and HTTPS.');return}pendingScan={type,id};if(type==='caregiver')wizard.newTag=null;showToast('Hold your phone near the NFC sticker…');await startNfcListener()}
+async function startNfcListener(){if(!('NDEFReader'in window)){showToast('Web NFC is unavailable here. Use Android Chrome over HTTPS.');return}if(scannerActive){if($('nfcState'))$('nfcState').textContent='Listening for NFC tags';return}try{nfcController=new AbortController();const reader=new NDEFReader();await reader.scan({signal:nfcController.signal});reader.addEventListener('reading',e=>{for(const record of e.message.records){if(record.recordType==='text'){let value='';try{value=new TextDecoder(record.encoding||'utf-8').decode(record.data).trim()}catch{}if(value){receiveTag(value);break}}}});reader.addEventListener('readingerror',()=>showToast('Could not read tag. Try again.'));scannerActive=true;if($('nfcState'))$('nfcState').textContent='Listening for NFC tags';showToast('NFC ready. Tap a sticker.')}catch(err){scannerActive=false;showToast('NFC could not start: '+(err?.message||'Permission denied'))}}
+function stopNfc(){try{nfcController?.abort()}catch{}nfcController=null;scannerActive=false;pendingScan=null}
+function receiveTag(value){if(pendingScan){const p=pendingScan;pendingScan=null;if(p.type==='caregiver'){if(db.caregivers.some(c=>c.tag===value)){showToast('That tag is already assigned.');return}wizard.newTag=value;const el=$('tagStatus');if(el)el.textContent='✓ Tag detected: '+value;beep(720);return}if(p.type==='replace'){const c=caregiverById(p.id);if(!c)return;if(db.caregivers.some(x=>x.id!==c.id&&x.tag===value))return showToast('Tag already belongs to another caregiver.');c.tag=value;save();beep(730);showToast(c.name+' band replaced.');render();return}if(p.type==='accessory'){const collision=Object.keys(db.tags).find(k=>k!==p.id&&db.tags[k]===value);if(collision)return showToast('That tag is assigned to another accessory.');if(db.caregivers.some(c=>c.tag===value))return showToast('This is a caregiver tag. Use another sticker.');db.tags[p.id]=value;save();beep(730);showToast((ITEMS.find(x=>x[0]===p.id)?.[1]||p.id)+' registered!');render();return}}if(session?.running)handleLiveTag(value)}
+window.goHome=goHome;window.beginWizard=beginWizard;window.openHelpVideo=openHelpVideo;window.scanFor=scanFor;window.saveCaregiver=saveCaregiver;window.saveBaby=saveBaby;window.chooseBaby=chooseBaby;window.startMode=startMode;window.beginSession=beginSession;window.startNfcListener=startNfcListener;window.togglePause=togglePause;window.finishSession=finishSession;window.bottleMade=bottleMade;window.saveHelpUrl=saveHelpUrl;window.replaceBand=replaceBand;window.removeCaregiver=removeCaregiver;window.render=render;window.page=page;window.wizard=wizard;window.session=session;
+// Keep inline onclick references synchronized with state changes.
+Object.defineProperty(window,'page',{get:()=>page,set:v=>page=v});Object.defineProperty(window,'wizard',{get:()=>wizard,set:v=>wizard=v});Object.defineProperty(window,'session',{get:()=>session,set:v=>session=v});
+setInterval(tick,1000);render();
+</script></body></html>
