@@ -1,0 +1,163 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#ffffff">
+<title>ESSAzLife Babiez</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;background:#fff;color:#111;margin:0;padding:20px}
+main{max-width:450px;margin:30px auto}
+header{font-size:20px;font-weight:bold;border-bottom:2px solid #111;padding-bottom:18px}
+h1{font-size:25px;margin-top:35px}
+p{line-height:1.6}
+button,input{width:100%;padding:15px;margin:8px 0;font-size:16px;border:1px solid #111;border-radius:6px}
+button{background:#111;color:#fff;cursor:pointer}
+button.secondary{background:#fff;color:#111}
+input{background:#fff;color:#111}
+#status{margin-top:20px;padding:15px;border:1px solid #ddd;border-radius:6px;white-space:pre-wrap}
+.hidden{display:none}
+small{color:#555}
+</style>
+</head>
+<body>
+<main>
+<header>ESSAzLife Babiez</header>
+
+<section id="setup">
+<h1>Welcome to Babiez!</h1>
+<p>Let's register your caregiver NFC sticker.</p>
+<label for="name">Caregiver Name</label>
+<input id="name" placeholder="Enter your name" maxlength="60">
+<button id="register">Tap Caregiver NFC</button>
+<p><small>Hold your programmed NFC sticker against the back of your phone when prompted.</small></p>
+</section>
+
+<section id="home" class="hidden">
+<h1 id="welcome"></h1>
+<p>Your caregiver NFC has been registered.</p>
+<button id="start">Scan Caregiver NFC</button>
+<button id="reset" class="secondary">Replace Caregiver NFC</button>
+</section>
+
+<div id="status" role="status" aria-live="polite">Ready.</div>
+</main>
+
+<script>
+const KEY="essazlife-babiez-caregiver-v1";
+const $=id=>document.getElementById(id);
+let caregiver=null;
+let scanner=null;
+
+function status(message){
+  $("status").textContent=message;
+}
+
+function showHome(){
+  $("setup").classList.add("hidden");
+  $("home").classList.remove("hidden");
+  $("welcome").textContent="Welcome, "+caregiver.name+"!";
+}
+
+function showSetup(){
+  $("setup").classList.remove("hidden");
+  $("home").classList.add("hidden");
+}
+
+try{
+  caregiver=JSON.parse(localStorage.getItem(KEY));
+  if(caregiver?.id && caregiver?.name) showHome();
+}catch(e){caregiver=null;}
+
+function supported(){
+  if(!("NDEFReader" in window)){
+    status("Web NFC is unavailable. Open this page in Chrome on an NFC-compatible Android phone.");
+    return false;
+  }
+  return true;
+}
+
+async function scan(mode){
+  if(!supported())return;
+
+  if(mode==="register" && !$("name").value.trim()){
+    status("Please enter your caregiver name first.");
+    return;
+  }
+
+  if(scanner){
+    status("A scan is already in progress.");
+    return;
+  }
+
+  const reader=new NDEFReader();
+  scanner=reader;
+
+  try{
+    reader.onreading=event=>{
+      if(scanner!==reader)return;
+
+      let id=null;
+
+      for(const record of event.message.records){
+        if(record.recordType!=="text")continue;
+        try{
+          const text=new TextDecoder(record.encoding||"utf-8")
+            .decode(record.data).trim();
+          if(text.startsWith("ESSAZ-CAREGIVER-")){
+            id=text;
+            break;
+          }
+        }catch(e){}
+      }
+
+      if(!id){
+        status("This tag does not contain an ESSAzLife caregiver ID.");
+        return;
+      }
+
+      if(mode==="register"){
+        caregiver={name:$("name").value.trim(),id};
+        localStorage.setItem(KEY,JSON.stringify(caregiver));
+        showHome();
+        status("Caregiver registered successfully!");
+      }else if(caregiver && id===caregiver.id){
+        status("NFC verified! Welcome back, "+caregiver.name+"!");
+      }else{
+        status("This is not the registered caregiver sticker.");
+        return;
+      }
+
+      reader.onreading=null;
+      reader.onreadingerror=null;
+      scanner=null;
+    };
+
+    reader.onreadingerror=()=>{
+      status("Unable to read the tag. Try holding it closer.");
+    };
+
+    status("Ready to scan. Hold your NFC sticker against your phone.");
+    await reader.scan();
+  }catch(error){
+    scanner=null;
+    status("NFC scan couldn't start: "+error.message);
+  }
+}
+
+$("register").onclick=()=>scan("register");
+$("start").onclick=()=>scan("verify");
+
+$("reset").onclick=()=>{
+  if(confirm("Replace the registered caregiver NFC sticker?")){
+    localStorage.removeItem(KEY);
+    caregiver=null;
+    showSetup();
+    status("Ready to register a caregiver sticker.");
+  }
+};
+</script>
+</body>
+</html>
