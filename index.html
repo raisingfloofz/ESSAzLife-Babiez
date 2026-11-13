@@ -41,12 +41,14 @@ function primeCrying(){
   if(audioState.crying)return;
   const cry=makeSound('crying',true);
   cry.volume=0;
+  cry.preload='auto';
   audioState.crying=cry;
   const started=cry.play();
   if(started&&typeof started.then==='function')started.then(()=>{
-    if(audioState.crying===cry){cry.pause();cry.currentTime=0;cry.volume=1;}
+    if(audioState.crying===cry){if(!session?.running||!session.need){cry.pause();cry.currentTime=0;}cry.volume=1;}
   }).catch(err=>console.warn('Could not prepare crying audio:',err));
 }
+document.addEventListener('pointerdown',()=>{if(session?.running&&!session.paused&&session.need&&audioState.crying?.paused){sound('crying');}});
 function startAmbient(){if(!session?.running||session.paused||session.need)return;sound('breathing',{background:true,loop:true})}
 function stopAmbient(){stopAudio(audioState.background);stopAudio(audioState.heartbeat);audioState.background=null;audioState.heartbeat=null}
 const KEY='essazlife-babiez-v3';
